@@ -34,8 +34,7 @@ export async function handler(event: S3Event): Promise<void> {
       }
       
       const deviceId = keyParts[1];
-      const filename = keyParts[keyParts.length - 1];
-      
+
       // Query DynamoDB to find the recording by s3KeyRaw
       const queryResult = await dynamoClient.send(
         new QueryCommand({
