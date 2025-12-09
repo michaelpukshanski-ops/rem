@@ -25,9 +25,9 @@ if [ ! -f "terraform.tfstate" ]; then
 fi
 
 SQS_QUEUE_URL=$(terraform output -raw sqs_queue_url 2>/dev/null || echo "")
-RAW_AUDIO_BUCKET=$(terraform output -raw raw_audio_bucket 2>/dev/null || echo "")
-TRANSCRIPTS_BUCKET=$(terraform output -raw transcripts_bucket 2>/dev/null || echo "")
-DYNAMODB_TABLE=$(terraform output -raw dynamodb_table 2>/dev/null || echo "")
+RAW_AUDIO_BUCKET=$(terraform output -raw raw_audio_bucket_name 2>/dev/null || echo "")
+TRANSCRIPTS_BUCKET=$(terraform output -raw transcripts_bucket_name 2>/dev/null || echo "")
+DYNAMODB_TABLE=$(terraform output -raw dynamodb_table_name 2>/dev/null || echo "")
 
 cd ../..
 
