@@ -1,0 +1,31 @@
+{
+  "name": "rem-ingest-audio",
+  "version": "1.0.0",
+  "description": "REM Lambda function to ingest audio uploads from ESP32",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc && npm run package",
+    "package": "cd dist && zip -r function.zip . && cd ..",
+    "clean": "rm -rf dist",
+    "rebuild": "npm run clean && npm run build",
+    "test": "echo \"No tests yet\" && exit 0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.450.0",
+    "@aws-sdk/client-s3": "^3.450.0",
+    "@aws-sdk/lib-dynamodb": "^3.450.0",
+    "busboy": "^1.6.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.130",
+    "@types/busboy": "^1.5.3",
+    "@types/node": "^20.10.0",
+    "@types/uuid": "^9.0.7",
+    "typescript": "^5.3.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
+

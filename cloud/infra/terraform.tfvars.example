@@ -1,0 +1,50 @@
+# REM Terraform Configuration
+# Copy this file to terraform.tfvars and customize for your deployment
+
+# Project Configuration
+project_name = "rem"
+environment  = "dev"
+
+# AWS Region
+aws_region = "us-east-1"
+
+# User Configuration
+user_id = "default-user"
+
+# API Key for ESP32 authentication
+# Generate a secure random key: openssl rand -base64 32
+api_key = "CHANGE-ME-TO-A-SECURE-RANDOM-KEY"
+
+# S3 Lifecycle Configuration
+raw_audio_retention_days      = 90   # Delete raw audio after 90 days
+transcripts_ia_transition_days = 30  # Move to Infrequent Access after 30 days
+transcripts_glacier_days       = 90  # Move to Glacier after 90 days
+
+# DynamoDB Auto-Scaling
+dynamodb_min_read_capacity  = 5
+dynamodb_max_read_capacity  = 100
+dynamodb_min_write_capacity = 5
+dynamodb_max_write_capacity = 100
+
+# SQS Configuration
+sqs_visibility_timeout_seconds = 900  # 15 minutes
+sqs_message_retention_seconds  = 1209600  # 14 days
+sqs_max_receive_count          = 3  # Retries before DLQ
+
+# Lambda Configuration
+lambda_timeout_seconds = 30
+lambda_memory_mb       = 512
+ingest_lambda_memory_mb = 1024  # Larger for file uploads
+
+# API Gateway Configuration
+api_throttle_rate_limit  = 50   # Requests per second
+api_throttle_burst_limit = 100  # Burst capacity
+
+# Tags (optional)
+tags = {
+  Project     = "REM"
+  Environment = "Development"
+  ManagedBy   = "Terraform"
+  Owner       = "YourName"
+}
+
