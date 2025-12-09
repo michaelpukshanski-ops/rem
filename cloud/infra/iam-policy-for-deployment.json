@@ -5,6 +5,11 @@
       "Sid": "TerraformDeploymentPermissions",
       "Effect": "Allow",
       "Action": [
+        "apigateway:GET",
+        "apigateway:POST",
+        "apigateway:PUT",
+        "apigateway:PATCH",
+        "apigateway:DELETE",
         "apigateway:*",
         "lambda:*",
         "iam:CreateRole",

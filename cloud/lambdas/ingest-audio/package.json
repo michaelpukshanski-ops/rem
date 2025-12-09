@@ -4,10 +4,10 @@
   "description": "REM Lambda function to ingest audio uploads from ESP32",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc && npm run package",
-    "package": "mkdir -p dist && cp -r node_modules dist/ && cd dist && zip -r function.zip . && cd ..",
+    "build": "npm run clean && tsc && npm run package",
+    "package": "cp -r node_modules dist/ && cd dist && zip -r function.zip . && cd ..",
     "clean": "rm -rf dist",
-    "rebuild": "npm run clean && npm run build",
+    "rebuild": "npm run build",
     "test": "echo \"No tests yet\" && exit 0"
   },
   "dependencies": {

@@ -21,10 +21,6 @@ resource "aws_lambda_function" "ingest_audio" {
   tags = {
     Name = "REM Ingest Audio"
   }
-  
-  lifecycle {
-    ignore_changes = [source_code_hash]
-  }
 }
 
 resource "aws_cloudwatch_log_group" "ingest_audio" {
@@ -52,10 +48,6 @@ resource "aws_lambda_function" "transcription_dispatcher" {
   
   tags = {
     Name = "REM Transcription Dispatcher"
-  }
-  
-  lifecycle {
-    ignore_changes = [source_code_hash]
   }
 }
 
@@ -93,10 +85,6 @@ resource "aws_lambda_function" "query_transcripts" {
   
   tags = {
     Name = "REM Query Transcripts"
-  }
-  
-  lifecycle {
-    ignore_changes = [source_code_hash]
   }
 }
 
