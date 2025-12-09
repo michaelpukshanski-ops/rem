@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc && npm run package",
-    "package": "cd dist && zip -r function.zip . && cd ..",
+    "package": "mkdir -p dist && cp -r node_modules dist/ && cd dist && zip -r function.zip . && cd ..",
     "clean": "rm -rf dist",
     "rebuild": "npm run clean && npm run build",
     "test": "echo \"No tests yet\" && exit 0"
