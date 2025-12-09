@@ -110,5 +110,4 @@ echo "  1. Review and edit $ENV_FILE if needed"
 echo "  2. If you have a GPU, change WHISPER_DEVICE=cuda"
 echo "  3. Run: make run-worker"
 echo ""
-EOF
 
