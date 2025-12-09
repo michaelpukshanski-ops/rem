@@ -60,13 +60,14 @@ cp include/secrets.h.example include/secrets.h
 nano include/secrets.h
 ```
 
-Set these values:
+Set these values (from Terraform outputs):
 ```cpp
-#define WIFI_SSID "YourWiFi"
-#define WIFI_PASSWORD "YourPassword"
 #define API_GATEWAY_URL "https://xxxxx.execute-api.us-east-1.amazonaws.com/ingest"
 #define API_KEY "your-api-key-from-terraform"
+#define USER_ID "default-user"
 ```
+
+**Note:** You can leave `WIFI_SSID` and `WIFI_PASSWORD` empty - you'll configure WiFi via web portal after flashing!
 
 ### Step 4: Flash ESP32 (5 min)
 
@@ -80,11 +81,26 @@ make monitor-esp32
 
 **Expected output:**
 ```
-WiFi connected!
 I2S initialized
 Recording started...
+```
+
+### Step 4.5: Configure WiFi via Web Portal (2 min)
+
+1. **Press and hold BOOT button** on ESP32 for 3 seconds
+2. **Connect phone to WiFi:** `REM-Setup` (password: `rem12345`)
+3. **Browser opens to** `192.168.4.1` (or navigate manually)
+4. **Select your WiFi** and enter password
+5. **Click Save** - ESP32 restarts and connects!
+
+**Expected output after WiFi config:**
+```
+WiFi connected!
+IP: 192.168.1.xxx
 File uploaded: recording_001.wav
 ```
+
+See [esp32/WIFI_SETUP.md](esp32/WIFI_SETUP.md) for detailed WiFi setup guide.
 
 ### Step 5: Start GPU Worker (5 min)
 

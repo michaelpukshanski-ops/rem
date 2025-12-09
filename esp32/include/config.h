@@ -52,8 +52,8 @@
 // WiFi connection timeout
 #define WIFI_CONNECT_TIMEOUT_MS  10000  // 10 seconds
 
-// WiFi check interval when disconnected
-#define WIFI_CHECK_INTERVAL_MS   30000  // 30 seconds
+// WiFi check interval when disconnected (how often to try uploading)
+#define WIFI_CHECK_INTERVAL_MS   (30 * 60 * 1000)  // 30 minutes
 
 // Upload retry configuration
 #define UPLOAD_MAX_RETRIES       5
@@ -69,6 +69,19 @@
 
 // Device ID will be generated from MAC address
 // Format: "esp32-XXXXXXXXXXXX"
+
+// ============================================================================
+// WiFi Configuration Button
+// ============================================================================
+
+// Button to enter WiFi configuration mode
+#define CONFIG_BUTTON_PIN       0      // GPIO 0 (BOOT button on most ESP32 boards)
+#define CONFIG_BUTTON_HOLD_MS   3000   // Hold for 3 seconds to enter config mode
+
+// WiFi Manager AP settings
+#define CONFIG_AP_NAME          "REM-Setup"  // Access Point name
+#define CONFIG_AP_PASSWORD      "rem12345"   // Access Point password (min 8 chars)
+#define CONFIG_PORTAL_TIMEOUT   300          // Portal timeout in seconds (5 minutes)
 
 // ============================================================================
 // Debug Configuration

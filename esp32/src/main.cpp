@@ -10,6 +10,7 @@
 #include <ArduinoJson.h>
 #include <driver/i2s.h>
 #include <time.h>
+#include <WiFiManager.h>
 #include "config.h"
 #include "secrets.h"
 
@@ -32,10 +33,17 @@ struct UploadState {
 
 String deviceId;
 StaticJsonDocument<4096> uploadIndex;
+WiFiManager wifiManager;
+
+// Button state for config mode
+unsigned long configButtonPressTime = 0;
+bool configButtonPressed = false;
 
 // Forward declarations
 void setupI2S();
 void setupWiFi();
+void checkConfigButton();
+void enterConfigMode();
 void setupTime();
 void setupStorage();
 String getDeviceId();
@@ -58,26 +66,30 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
   DEBUG_PRINTLN("\n=== REM ESP32 Firmware v1.0 ===\n");
-  
+
+  // Setup config button
+  pinMode(CONFIG_BUTTON_PIN, INPUT_PULLUP);
+
   deviceId = getDeviceId();
   DEBUG_PRINTF("Device ID: %s\n", deviceId.c_str());
-  
+
   setupStorage();
   setupWiFi();
   setupTime();
   setupI2S();
-  
+
   recording.isRecording = false;
   uploadState.lastWiFiCheck = 0;
   uploadState.consecutiveFailures = 0;
   uploadState.isConnected = false;
-  
+
   loadUploadIndex();
   startNewRecordingChunk();
   DEBUG_PRINTLN("Setup complete\n");
 }
 
 void loop() {
+  checkConfigButton();
   audioRecordingTask();
   uploadTask();
   delay(1);
@@ -111,8 +123,77 @@ void setupI2S() {
 
 void setupWiFi() {
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  DEBUG_PRINTF("WiFi: %s\n", WIFI_SSID);
+
+  // Configure WiFiManager
+  wifiManager.setConfigPortalTimeout(CONFIG_PORTAL_TIMEOUT);
+  wifiManager.setAPCallback([](WiFiManager *mgr) {
+    DEBUG_PRINTLN("\n=== WiFi Config Mode ===");
+    DEBUG_PRINTF("Connect to: %s\n", CONFIG_AP_NAME);
+    DEBUG_PRINTF("Password: %s\n", CONFIG_AP_PASSWORD);
+    DEBUG_PRINTLN("Open browser to: 192.168.4.1");
+    DEBUG_PRINTLN("========================\n");
+  });
+
+  // Try to auto-connect with saved credentials
+  DEBUG_PRINTLN("Connecting to WiFi...");
+  if (!wifiManager.autoConnect(CONFIG_AP_NAME, CONFIG_AP_PASSWORD)) {
+    DEBUG_PRINTLN("Failed to connect, will retry later");
+    // Don't block - continue with recording even without WiFi
+  } else {
+    DEBUG_PRINTLN("WiFi connected!");
+    DEBUG_PRINTF("IP: %s\n", WiFi.localIP().toString().c_str());
+  }
+}
+
+void checkConfigButton() {
+  // Check if config button is pressed (active LOW)
+  if (digitalRead(CONFIG_BUTTON_PIN) == LOW) {
+    if (!configButtonPressed) {
+      configButtonPressed = true;
+      configButtonPressTime = millis();
+      DEBUG_PRINTLN("Config button pressed...");
+    } else {
+      // Check if held long enough
+      if (millis() - configButtonPressTime >= CONFIG_BUTTON_HOLD_MS) {
+        DEBUG_PRINTLN("Entering WiFi config mode!");
+        enterConfigMode();
+        configButtonPressed = false;
+      }
+    }
+  } else {
+    if (configButtonPressed) {
+      DEBUG_PRINTLN("Config button released");
+      configButtonPressed = false;
+    }
+  }
+}
+
+void enterConfigMode() {
+  DEBUG_PRINTLN("\n=================================");
+  DEBUG_PRINTLN("WiFi Configuration Mode");
+  DEBUG_PRINTLN("=================================");
+  DEBUG_PRINTF("1. Connect to WiFi: %s\n", CONFIG_AP_NAME);
+  DEBUG_PRINTF("2. Password: %s\n", CONFIG_AP_PASSWORD);
+  DEBUG_PRINTLN("3. Open browser to: 192.168.4.1");
+  DEBUG_PRINTLN("4. Enter your WiFi credentials");
+  DEBUG_PRINTLN("=================================\n");
+
+  // Reset WiFi settings and start config portal
+  wifiManager.resetSettings();
+
+  // Start config portal (blocking)
+  if (wifiManager.startConfigPortal(CONFIG_AP_NAME, CONFIG_AP_PASSWORD)) {
+    DEBUG_PRINTLN("\nWiFi configured successfully!");
+    DEBUG_PRINTF("Connected to: %s\n", WiFi.SSID().c_str());
+    DEBUG_PRINTF("IP Address: %s\n", WiFi.localIP().toString().c_str());
+
+    // Restart to apply new settings
+    DEBUG_PRINTLN("Restarting in 3 seconds...");
+    delay(3000);
+    ESP.restart();
+  } else {
+    DEBUG_PRINTLN("\nConfig portal timeout - continuing with recording");
+  }
 }
 
 void setupTime() {
