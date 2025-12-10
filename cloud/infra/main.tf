@@ -41,6 +41,27 @@ resource "random_password" "api_key" {
   special = false
 }
 
+# ============================================================================
+# Data Sources for Default VPC (if not specified)
+# ============================================================================
+
+data "aws_vpc" "default" {
+  default = true
+}
+
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}
+
+# Use provided VPC/subnets or fall back to default
+locals {
+  vpc_id      = var.vpc_id != "" ? var.vpc_id : data.aws_vpc.default.id
+  ecs_subnets = length(var.ecs_subnets) > 0 ? var.ecs_subnets : data.aws_subnets.default.ids
+}
+
 locals {
   api_key                  = var.api_key_value != "" ? var.api_key_value : random_password.api_key.result
   raw_audio_bucket_name    = var.s3_raw_audio_bucket_name != "" ? var.s3_raw_audio_bucket_name : "${var.project_name}-raw-audio-${random_id.suffix.hex}"

@@ -85,6 +85,64 @@ variable "sqs_message_retention" {
   default     = 1209600  # 14 days
 }
 
+# ============================================================================
+# ECS Variables
+# ============================================================================
+
+variable "enable_ecs_worker" {
+  description = "Enable ECS Fargate worker (set to false to use local worker)"
+  type        = bool
+  default     = false
+}
+
+variable "ecs_cpu" {
+  description = "CPU units for ECS task (1024 = 1 vCPU)"
+  type        = number
+  default     = 1024  # 1 vCPU
+}
+
+variable "ecs_memory" {
+  description = "Memory for ECS task in MB"
+  type        = number
+  default     = 2048  # 2 GB
+}
+
+variable "ecs_min_tasks" {
+  description = "Minimum number of ECS tasks"
+  type        = number
+  default     = 0
+}
+
+variable "ecs_max_tasks" {
+  description = "Maximum number of ECS tasks"
+  type        = number
+  default     = 3
+}
+
+variable "ecs_target_queue_messages" {
+  description = "Target number of SQS messages per ECS task for auto-scaling"
+  type        = number
+  default     = 1
+}
+
+variable "whisper_model" {
+  description = "Whisper model to use (tiny, base, small, medium, large-v2, large-v3)"
+  type        = string
+  default     = "base"
+}
+
+variable "vpc_id" {
+  description = "VPC ID for ECS tasks (leave empty to use default VPC)"
+  type        = string
+  default     = ""
+}
+
+variable "ecs_subnets" {
+  description = "Subnet IDs for ECS tasks (leave empty to use default VPC subnets)"
+  type        = list(string)
+  default     = []
+}
+
 variable "enable_api_gateway_logging" {
   description = "Enable CloudWatch logging for API Gateway"
   type        = bool

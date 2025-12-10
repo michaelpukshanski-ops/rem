@@ -130,6 +130,35 @@ output "gpu_worker_configuration" {
   }
 }
 
+# ============================================================================
+# ECS Outputs
+# ============================================================================
+
+output "ecr_repository_url" {
+  description = "ECR repository URL for worker Docker image"
+  value       = aws_ecr_repository.worker.repository_url
+}
+
+output "ecs_cluster_name" {
+  description = "ECS cluster name"
+  value       = aws_ecs_cluster.transcription.name
+}
+
+output "ecs_service_name" {
+  description = "ECS service name"
+  value       = aws_ecs_service.worker.name
+}
+
+output "ecs_worker_enabled" {
+  description = "Whether ECS worker is enabled"
+  value       = var.enable_ecs_worker
+}
+
+output "ecs_logs_group" {
+  description = "CloudWatch Logs group for ECS worker"
+  value       = aws_cloudwatch_log_group.worker.name
+}
+
 output "deployment_summary" {
   description = "Summary of deployed resources"
   value = {
