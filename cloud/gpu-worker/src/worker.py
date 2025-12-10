@@ -87,7 +87,8 @@ try:
     whisper_model = WhisperModel(
         WHISPER_MODEL,
         device=WHISPER_DEVICE,
-        compute_type=WHISPER_COMPUTE_TYPE
+        compute_type=WHISPER_COMPUTE_TYPE,
+        download_root="/root/.cache/huggingface"
     )
     logger.info("Whisper model loaded successfully")
 except Exception as e:
