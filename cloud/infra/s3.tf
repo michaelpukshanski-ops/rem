@@ -19,11 +19,13 @@ resource "aws_s3_bucket_versioning" "raw_audio" {
 
 resource "aws_s3_bucket_lifecycle_configuration" "raw_audio" {
   bucket = aws_s3_bucket.raw_audio.id
-  
+
   rule {
     id     = "delete-old-recordings"
     status = "Enabled"
-    
+
+    filter {}  # Apply to all objects
+
     expiration {
       days = 90  # Keep raw audio for 90 days
     }
@@ -62,16 +64,18 @@ resource "aws_s3_bucket_versioning" "transcripts" {
 
 resource "aws_s3_bucket_lifecycle_configuration" "transcripts" {
   bucket = aws_s3_bucket.transcripts.id
-  
+
   rule {
     id     = "transition-to-ia"
     status = "Enabled"
-    
+
+    filter {}  # Apply to all objects
+
     transition {
       days          = 30
       storage_class = "STANDARD_IA"
     }
-    
+
     transition {
       days          = 90
       storage_class = "GLACIER_IR"
