@@ -5,7 +5,7 @@
 
 import { S3Event } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 
 const dynamoClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
@@ -21,22 +21,23 @@ async function sleep(ms: number): Promise<void> {
 
 async function findRecordingWithRetry(deviceId: string, s3Key: string, maxRetries = 3): Promise<any> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    // Use Scan with filter since s3KeyRaw is not a key attribute
-    // This is acceptable because we're filtering by deviceId which limits the scan scope
-    const scanResult = await dynamoClient.send(
-      new ScanCommand({
+    // Query the GSI by deviceId, then filter by s3KeyRaw
+    // This works because DeviceTimeIndex has projection_type = ALL
+    const queryResult = await dynamoClient.send(
+      new QueryCommand({
         TableName: DYNAMODB_TABLE,
-        FilterExpression: 's3KeyRaw = :s3Key AND GSI1PK = :deviceId',
+        IndexName: 'DeviceTimeIndex',
+        KeyConditionExpression: 'GSI1PK = :deviceId',
+        FilterExpression: 's3KeyRaw = :s3Key',
         ExpressionAttributeValues: {
-          ':s3Key': s3Key,
           ':deviceId': deviceId,
+          ':s3Key': s3Key,
         },
-        Limit: 1,
       })
     );
 
-    if (scanResult.Items && scanResult.Items.length > 0) {
-      return scanResult.Items[0];
+    if (queryResult.Items && queryResult.Items.length > 0) {
+      return queryResult.Items[0];
     }
 
     if (attempt < maxRetries) {
