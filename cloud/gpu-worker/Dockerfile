@@ -17,10 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Pre-download Whisper model during build (so it doesn't need internet at runtime)
 # This downloads the model to /root/.cache/huggingface/
-RUN python -c "from faster_whisper import WhisperModel; print('Downloading Whisper base model...'); model = WhisperModel('base', device='cpu', compute_type='float32', download_root='/root/.cache/huggingface'); print('Model downloaded successfully!')"
-
-# Verify the model was downloaded
-RUN ls -lah /root/.cache/huggingface/ && du -sh /root/.cache/huggingface/
+RUN python -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='float32', download_root='/root/.cache/huggingface')"
 
 # Copy application code
 COPY src/ ./src/
