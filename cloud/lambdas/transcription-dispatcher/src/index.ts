@@ -15,6 +15,40 @@ const DYNAMODB_TABLE = process.env.DYNAMODB_TABLE!;
 const SQS_QUEUE_URL = process.env.SQS_QUEUE_URL!;
 const USER_ID = process.env.USER_ID!;
 
+async function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function findRecordingWithRetry(deviceId: string, s3Key: string, maxRetries = 3): Promise<any> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const queryResult = await dynamoClient.send(
+      new QueryCommand({
+        TableName: DYNAMODB_TABLE,
+        IndexName: 'DeviceTimeIndex',
+        KeyConditionExpression: 'GSI1PK = :deviceId',
+        FilterExpression: 's3KeyRaw = :s3Key',
+        ExpressionAttributeValues: {
+          ':deviceId': deviceId,
+          ':s3Key': s3Key,
+        },
+        Limit: 1,
+      })
+    );
+
+    if (queryResult.Items && queryResult.Items.length > 0) {
+      return queryResult.Items[0];
+    }
+
+    if (attempt < maxRetries) {
+      const delayMs = Math.pow(2, attempt) * 100; // 200ms, 400ms, 800ms
+      console.log(`Record not found, retrying in ${delayMs}ms (attempt ${attempt}/${maxRetries})`);
+      await sleep(delayMs);
+    }
+  }
+
+  return null;
+}
+
 export async function handler(event: S3Event): Promise<void> {
   console.log(`Processing ${event.Records.length} S3 events`);
   
@@ -35,27 +69,14 @@ export async function handler(event: S3Event): Promise<void> {
       
       const deviceId = keyParts[1];
 
-      // Query DynamoDB to find the recording by s3KeyRaw
-      const queryResult = await dynamoClient.send(
-        new QueryCommand({
-          TableName: DYNAMODB_TABLE,
-          IndexName: 'DeviceTimeIndex',
-          KeyConditionExpression: 'GSI1PK = :deviceId',
-          FilterExpression: 's3KeyRaw = :s3Key',
-          ExpressionAttributeValues: {
-            ':deviceId': deviceId,
-            ':s3Key': key,
-          },
-          Limit: 1,
-        })
-      );
-      
-      if (!queryResult.Items || queryResult.Items.length === 0) {
-        console.error(`No DynamoDB record found for S3 key: ${key}`);
+      // Query DynamoDB to find the recording by s3KeyRaw (with retry for race conditions)
+      const recording = await findRecordingWithRetry(deviceId, key);
+
+      if (!recording) {
+        console.error(`No DynamoDB record found for S3 key after retries: ${key}`);
         continue;
       }
-      
-      const recording = queryResult.Items[0];
+
       const recordingId = recording.recordingId;
       
       console.log(`Found recording: ${recordingId}`);
