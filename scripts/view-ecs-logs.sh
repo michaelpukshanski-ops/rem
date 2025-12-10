@@ -12,9 +12,9 @@ cd "$REPO_ROOT/cloud/infra"
 
 LOG_GROUP=$(terraform output -raw ecs_logs_group 2>/dev/null || echo "")
 
+# Fallback to default name if Terraform output not available
 if [ -z "$LOG_GROUP" ]; then
-  echo "❌ Error: Could not get log group from Terraform"
-  exit 1
+  LOG_GROUP="/ecs/rem-transcription-worker-dev"
 fi
 
 echo "📋 Viewing ECS worker logs from: $LOG_GROUP"

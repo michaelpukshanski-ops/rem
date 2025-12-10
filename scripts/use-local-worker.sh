@@ -16,10 +16,13 @@ cd "$REPO_ROOT/cloud/infra"
 CLUSTER_NAME=$(terraform output -raw ecs_cluster_name 2>/dev/null || echo "")
 SERVICE_NAME=$(terraform output -raw ecs_service_name 2>/dev/null || echo "")
 
-if [ -z "$CLUSTER_NAME" ] || [ -z "$SERVICE_NAME" ]; then
-  echo "❌ Error: Could not get ECS cluster/service names from Terraform"
-  echo "   Make sure you've deployed the infrastructure first."
-  exit 1
+# Fallback to default names if Terraform outputs not available
+if [ -z "$CLUSTER_NAME" ]; then
+  CLUSTER_NAME="rem-transcription-cluster-dev"
+fi
+
+if [ -z "$SERVICE_NAME" ]; then
+  SERVICE_NAME="rem-transcription-worker-dev"
 fi
 
 echo "📊 Current ECS status:"

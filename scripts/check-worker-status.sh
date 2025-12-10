@@ -17,6 +17,15 @@ CLUSTER_NAME=$(terraform output -raw ecs_cluster_name 2>/dev/null || echo "")
 SERVICE_NAME=$(terraform output -raw ecs_service_name 2>/dev/null || echo "")
 QUEUE_URL=$(terraform output -raw sqs_queue_url 2>/dev/null || echo "")
 
+# Fallback to default names if Terraform outputs not available
+if [ -z "$CLUSTER_NAME" ]; then
+  CLUSTER_NAME="rem-transcription-cluster-dev"
+fi
+
+if [ -z "$SERVICE_NAME" ]; then
+  SERVICE_NAME="rem-transcription-worker-dev"
+fi
+
 # Check ECS Worker
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "📦 ECS FARGATE WORKER"
