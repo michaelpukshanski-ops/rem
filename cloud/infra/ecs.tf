@@ -98,7 +98,13 @@ resource "aws_launch_template" "ecs_spot" {
     name = aws_iam_instance_profile.ecs_instance.name
   }
 
-  vpc_security_group_ids = [aws_security_group.ecs_worker.id]
+  # Assign public IP for internet access (needed for ECR, S3, etc.)
+  network_interfaces {
+    associate_public_ip_address = true
+    delete_on_termination       = true
+    device_index                = 0
+    security_groups             = [aws_security_group.ecs_worker.id]
+  }
 
   user_data = base64encode(<<-EOF
     #!/bin/bash
@@ -287,9 +293,10 @@ resource "aws_ecs_service" "worker" {
   }
 
   network_configuration {
-    subnets          = local.ecs_subnets
-    security_groups  = [aws_security_group.ecs_worker.id]
-    assign_public_ip = true
+    subnets         = local.ecs_subnets
+    security_groups = [aws_security_group.ecs_worker.id]
+    # Note: assign_public_ip not supported for EC2 launch type
+    # Public IP is assigned by the EC2 instance itself
   }
 
   # Wait for capacity provider to be ready
