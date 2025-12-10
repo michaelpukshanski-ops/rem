@@ -94,6 +94,73 @@ resource "aws_cloudwatch_log_group" "query_transcripts" {
 }
 
 # ============================================================================
+# Transcription Worker Lambda (replaces ECS Fargate)
+# ============================================================================
+
+# ECR repository for Lambda Docker image
+resource "aws_ecr_repository" "transcription_worker" {
+  name                 = "${var.project_name}-transcription-worker"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = false
+  }
+
+  tags = {
+    Name = "REM Transcription Worker Lambda"
+  }
+}
+
+# Lambda function using Docker image (supports larger dependencies)
+resource "aws_lambda_function" "transcription_worker" {
+  function_name = "${var.project_name}-transcription-worker-${var.environment}"
+  role          = aws_iam_role.transcription_worker_lambda.arn
+  package_type  = "Image"
+  image_uri     = "${aws_ecr_repository.transcription_worker.repository_url}:latest"
+  timeout       = 900  # 15 minutes (max for Lambda)
+  memory_size   = 3008  # ~3 GB for Whisper model
+
+  ephemeral_storage {
+    size = 2048  # 2 GB for model caching in /tmp
+  }
+
+  environment {
+    variables = merge(
+      local.common_lambda_environment,
+      {
+        WHISPER_MODEL = var.whisper_model
+      }
+    )
+  }
+
+  tags = {
+    Name = "REM Transcription Worker"
+  }
+
+  # Ignore image changes (updated via Docker push)
+  lifecycle {
+    ignore_changes = [image_uri]
+  }
+}
+
+resource "aws_cloudwatch_log_group" "transcription_worker" {
+  name              = "/aws/lambda/${aws_lambda_function.transcription_worker.function_name}"
+  retention_in_days = 14
+}
+
+# SQS trigger for Lambda
+resource "aws_lambda_event_source_mapping" "transcription_worker_sqs" {
+  event_source_arn = aws_sqs_queue.transcription_jobs.arn
+  function_name    = aws_lambda_function.transcription_worker.arn
+  batch_size       = 1  # Process one message at a time
+
+  # Retry configuration
+  scaling_config {
+    maximum_concurrency = 10  # Max 10 concurrent executions
+  }
+}
+
+# ============================================================================
 # Lambda Insights (Optional - for enhanced monitoring)
 # ============================================================================
 
