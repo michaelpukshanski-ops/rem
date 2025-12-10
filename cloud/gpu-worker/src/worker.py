@@ -179,9 +179,10 @@ def update_dynamodb_record(
                 'SK': recording_id
             },
             UpdateExpression='SET #status = :status, transcriptS3Key = :key, '
-                           'language = :lang, durationSeconds = :dur, updatedAt = :now',
+                           '#language = :lang, durationSeconds = :dur, updatedAt = :now',
             ExpressionAttributeNames={
-                '#status': 'status'
+                '#status': 'status',
+                '#language': 'language'
             },
             ExpressionAttributeValues={
                 ':status': status,
