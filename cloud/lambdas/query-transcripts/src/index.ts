@@ -16,9 +16,18 @@ const s3Client = new S3Client({});
 const DYNAMODB_TABLE = process.env.DYNAMODB_TABLE!;
 const TRANSCRIPTS_BUCKET = process.env.TRANSCRIPTS_BUCKET!;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const API_KEY = process.env.API_KEY!;
 
 // Initialize OpenAI client if API key is available
 const openai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
+
+/**
+ * Validate API key from request headers
+ */
+function validateApiKey(event: APIGatewayProxyEventV2): boolean {
+  const apiKey = event.headers['x-api-key'] || event.headers['X-Api-Key'];
+  return apiKey === API_KEY;
+}
 
 interface QueryRequest {
   userId: string;
@@ -26,6 +35,7 @@ interface QueryRequest {
   from?: string;
   to?: string;
   limit?: number;
+  speaker?: string;  // Filter by specific speaker
 }
 
 interface TranscriptSegment {
@@ -34,6 +44,7 @@ interface TranscriptSegment {
   end: number;
   text: string;
   embedding?: number[];
+  speaker?: string;
 }
 
 interface TranscriptData {
@@ -49,6 +60,8 @@ interface TranscriptData {
   embedding?: number[];
   summary?: string;
   topics?: string[];
+  speakers?: string[];
+  speakerCount?: number;
 }
 
 interface QueryResultSegment {
@@ -90,13 +103,20 @@ async function getTranscriptFromS3(s3Key: string): Promise<TranscriptData | null
 function searchInTranscript(
   transcript: TranscriptData,
   query: string,
-  recordingStartedAt: string
+  recordingStartedAt: string,
+  speakerFilter?: string
 ): QueryResultSegment[] {
   const results: QueryResultSegment[] = [];
   const keywords = query.toLowerCase().split(/\s+/).filter(k => k.length > 2);
 
   for (let i = 0; i < transcript.segments.length; i++) {
     const segment = transcript.segments[i];
+
+    // Filter by speaker if specified
+    if (speakerFilter && segment.speaker !== speakerFilter) {
+      continue;
+    }
+
     const segmentText = segment.text.toLowerCase();
     let matchCount = 0;
     let exactPhraseMatch = false;
@@ -123,13 +143,18 @@ function searchInTranscript(
 
       const contextText = contextSegments.join(' ');
 
+      // Add speaker info to context if available
+      const contextWithSpeaker = segment.speaker
+        ? `[${segment.speaker}] ${contextText}`
+        : contextText;
+
       results.push({
         recordingId: transcript.recordingId,
         deviceId: transcript.deviceId,
         recordingStartedAt,
         segmentStart: segment.start,
         segmentEnd: segment.end,
-        text: contextText, // Include context
+        text: contextWithSpeaker,
         relevanceScore: exactPhraseMatch ? 1.0 : matchCount / keywords.length,
       });
     }
@@ -187,13 +212,19 @@ function cosineSimilarity(a: number[], b: number[]): number {
 function semanticSearchInTranscript(
   transcript: TranscriptData,
   queryEmbedding: number[],
-  recordingStartedAt: string
+  recordingStartedAt: string,
+  speakerFilter?: string
 ): QueryResultSegment[] {
   const results: QueryResultSegment[] = [];
 
   // Search in segments
   for (let i = 0; i < transcript.segments.length; i++) {
     const segment = transcript.segments[i];
+
+    // Filter by speaker if specified
+    if (speakerFilter && segment.speaker !== speakerFilter) {
+      continue;
+    }
 
     if (!segment.embedding) continue;
 
@@ -209,13 +240,18 @@ function semanticSearchInTranscript(
 
       const contextText = contextSegments.join(' ');
 
+      // Add speaker info to context if available
+      const contextWithSpeaker = segment.speaker
+        ? `[${segment.speaker}] ${contextText}`
+        : contextText;
+
       results.push({
         recordingId: transcript.recordingId,
         deviceId: transcript.deviceId,
         recordingStartedAt,
         segmentStart: segment.start,
         segmentEnd: segment.end,
-        text: contextText,
+        text: contextWithSpeaker,
         relevanceScore: similarity,
       });
     }
@@ -228,10 +264,11 @@ function hybridSearch(
   transcript: TranscriptData,
   query: string,
   queryEmbedding: number[] | null,
-  recordingStartedAt: string
+  recordingStartedAt: string,
+  speakerFilter?: string
 ): QueryResultSegment[] {
   // Get keyword search results
-  const keywordResults = searchInTranscript(transcript, query, recordingStartedAt);
+  const keywordResults = searchInTranscript(transcript, query, recordingStartedAt, speakerFilter);
 
   // If no embedding, return keyword results only
   if (!queryEmbedding) {
@@ -239,7 +276,7 @@ function hybridSearch(
   }
 
   // Get semantic search results
-  const semanticResults = semanticSearchInTranscript(transcript, queryEmbedding, recordingStartedAt);
+  const semanticResults = semanticSearchInTranscript(transcript, queryEmbedding, recordingStartedAt, speakerFilter);
 
   // Combine results with hybrid scoring
   const combinedMap = new Map<string, QueryResultSegment>();
@@ -277,15 +314,24 @@ function hybridSearch(
 
 export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
   console.log('Query transcripts request received');
-  
+
   try {
+    // Validate API key
+    if (!validateApiKey(event)) {
+      console.error('Invalid API key');
+      return {
+        statusCode: 401,
+        body: JSON.stringify({ success: false, message: 'Unauthorized' }),
+      };
+    }
+
     if (!event.body) {
       return {
         statusCode: 400,
         body: JSON.stringify({ success: false, message: 'Request body required' }),
       };
     }
-    
+
     const request: QueryRequest = JSON.parse(event.body);
     
     if (!request.userId || !request.query) {
@@ -301,8 +347,9 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     const limit = request.limit || 10;
     const from = request.from;
     const to = request.to;
-    
-    console.log(`Querying for user: ${request.userId}, query: "${request.query}"`);
+    const speakerFilter = request.speaker;
+
+    console.log(`Querying for user: ${request.userId}, query: "${request.query}"${speakerFilter ? `, speaker: ${speakerFilter}` : ''}`);
     
     // Query DynamoDB for transcribed recordings
     let keyConditionExpression = 'PK = :userId';
@@ -364,7 +411,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       if (!transcript) continue;
 
       // Use hybrid search if embedding is available, otherwise keyword search
-      const matches = hybridSearch(transcript, request.query, queryEmbedding, item.startedAt);
+      const matches = hybridSearch(transcript, request.query, queryEmbedding, item.startedAt, speakerFilter);
       allResults.push(...matches);
     }
 

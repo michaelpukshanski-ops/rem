@@ -94,7 +94,8 @@ resource "aws_ecs_task_definition" "worker" {
       { name = "WHISPER_DEVICE", value = "cpu" },
       { name = "WHISPER_COMPUTE_TYPE", value = "float32" },
       { name = "LOG_LEVEL", value = "INFO" },
-      { name = "OPENAI_API_KEY", value = var.openai_api_key }
+      { name = "OPENAI_API_KEY", value = var.openai_api_key },
+      { name = "HUGGINGFACE_TOKEN", value = var.huggingface_token }
     ]
     
     logConfiguration = {

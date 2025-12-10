@@ -10,9 +10,15 @@ faster-whisper>=0.10.0
 # OpenAI for embeddings and summarization
 openai>=1.0.0
 
+# Speaker diarization
+pyannote.audio>=3.1.0
+# Note: Requires HuggingFace token for model access
+
 # Audio processing
 numpy>=1.24.0
 ffmpeg-python>=0.2.0
+torch>=2.0.0  # Required by pyannote.audio
+torchaudio>=2.0.0  # Required by pyannote.audio
 
 # Environment variables
 python-dotenv>=1.0.0

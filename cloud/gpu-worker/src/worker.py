@@ -42,6 +42,24 @@ dynamodb = boto3.resource('dynamodb', region_name=os.getenv('AWS_REGION', 'us-ea
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
+# Pyannote.audio for speaker diarization
+HUGGINGFACE_TOKEN = os.getenv('HUGGINGFACE_TOKEN')
+diarization_pipeline = None
+
+if HUGGINGFACE_TOKEN:
+    try:
+        from pyannote.audio import Pipeline
+        diarization_pipeline = Pipeline.from_pretrained(
+            "pyannote/speaker-diarization-3.1",
+            use_auth_token=HUGGINGFACE_TOKEN
+        )
+        logger.info("Speaker diarization pipeline loaded successfully")
+    except Exception as e:
+        logger.warning(f"Failed to load speaker diarization pipeline: {e}")
+        diarization_pipeline = None
+else:
+    logger.warning("HuggingFace token not configured, speaker diarization disabled")
+
 # Configuration
 SQS_QUEUE_URL = os.getenv('SQS_QUEUE_URL')
 RAW_AUDIO_BUCKET = os.getenv('RAW_AUDIO_BUCKET')
@@ -224,6 +242,85 @@ def extract_topics(text: str) -> Optional[List[str]]:
         return None
 
 
+def perform_speaker_diarization(audio_path: str) -> Optional[List[Dict[str, Any]]]:
+    """Perform speaker diarization on audio file."""
+    if not diarization_pipeline:
+        logger.warning("Speaker diarization pipeline not available, skipping")
+        return None
+
+    try:
+        logger.info(f"Performing speaker diarization on {audio_path}")
+
+        # Run diarization
+        diarization = diarization_pipeline(audio_path)
+
+        # Convert to list of speaker segments
+        speaker_segments = []
+        for turn, _, speaker in diarization.itertracks(yield_label=True):
+            speaker_segments.append({
+                'start': round(turn.start, 2),
+                'end': round(turn.end, 2),
+                'speaker': speaker
+            })
+
+        # Count unique speakers
+        unique_speakers = set(seg['speaker'] for seg in speaker_segments)
+        logger.info(f"Detected {len(unique_speakers)} speakers in {len(speaker_segments)} segments")
+
+        return speaker_segments
+    except Exception as e:
+        logger.error(f"Failed to perform speaker diarization: {e}")
+        return None
+
+
+def assign_speakers_to_transcript(
+    transcript_segments: List[Dict[str, Any]],
+    speaker_segments: Optional[List[Dict[str, Any]]]
+) -> List[Dict[str, Any]]:
+    """Assign speaker labels to transcript segments."""
+    if not speaker_segments:
+        return transcript_segments
+
+    # For each transcript segment, find the overlapping speaker
+    for segment in transcript_segments:
+        segment_start = segment['start']
+        segment_end = segment['end']
+        segment_mid = (segment_start + segment_end) / 2
+
+        # Find speaker at the midpoint of the segment
+        speaker = None
+        for spk_seg in speaker_segments:
+            if spk_seg['start'] <= segment_mid <= spk_seg['end']:
+                speaker = spk_seg['speaker']
+                break
+
+        # If no exact match, find the closest speaker segment
+        if not speaker:
+            min_distance = float('inf')
+            for spk_seg in speaker_segments:
+                # Calculate overlap or distance
+                overlap_start = max(segment_start, spk_seg['start'])
+                overlap_end = min(segment_end, spk_seg['end'])
+
+                if overlap_start < overlap_end:
+                    # There's overlap
+                    speaker = spk_seg['speaker']
+                    break
+                else:
+                    # Calculate distance
+                    distance = min(
+                        abs(segment_start - spk_seg['end']),
+                        abs(segment_end - spk_seg['start'])
+                    )
+                    if distance < min_distance:
+                        min_distance = distance
+                        speaker = spk_seg['speaker']
+
+        segment['speaker'] = speaker if speaker else 'SPEAKER_00'
+
+    return transcript_segments
+
+
 def upload_transcript_to_s3(transcript_data: Dict[str, Any], s3_key: str) -> bool:
     """Upload transcript JSON to S3."""
     try:
@@ -354,6 +451,16 @@ def process_message(message: Dict[str, Any]) -> bool:
 
             full_text = transcript_result['full_text']
 
+            # Perform speaker diarization
+            logger.info("Performing speaker diarization...")
+            speaker_segments = perform_speaker_diarization(tmp_path)
+
+            # Assign speakers to transcript segments
+            segments_with_speakers = assign_speakers_to_transcript(
+                transcript_result['segments'],
+                speaker_segments
+            )
+
             # Generate AI enhancements (embeddings, summary, topics)
             logger.info("Generating AI enhancements...")
             embedding = generate_embedding(full_text)
@@ -362,7 +469,7 @@ def process_message(message: Dict[str, Any]) -> bool:
 
             # Generate embeddings for each segment
             segments_with_embeddings = []
-            for segment in transcript_result['segments']:
+            for segment in segments_with_speakers:
                 segment_embedding = generate_embedding(segment['text'])
                 segment_with_embedding = segment.copy()
                 if segment_embedding:
@@ -389,6 +496,11 @@ def process_message(message: Dict[str, Any]) -> bool:
                 transcript_data['summary'] = summary
             if topics:
                 transcript_data['topics'] = topics
+            if speaker_segments:
+                # Count unique speakers
+                unique_speakers = list(set(seg['speaker'] for seg in segments_with_embeddings if 'speaker' in seg))
+                transcript_data['speakers'] = unique_speakers
+                transcript_data['speakerCount'] = len(unique_speakers)
 
             # Generate S3 key for transcript
             transcript_s3_key = f"transcripts/{user_id}/{device_id}/{recording_id}.json"

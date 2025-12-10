@@ -97,10 +97,10 @@ resource "aws_apigatewayv2_stage" "default" {
   }
   
   default_route_settings {
-    throttling_burst_limit = 100
-    throttling_rate_limit  = 50
+    throttling_burst_limit = var.api_throttle_burst_limit
+    throttling_rate_limit  = var.api_throttle_rate_limit
   }
-  
+
   tags = {
     Name = "REM API Default Stage"
   }

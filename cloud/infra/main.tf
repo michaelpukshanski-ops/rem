@@ -75,6 +75,7 @@ locals {
     SQS_QUEUE_URL            = aws_sqs_queue.transcription_jobs.url
     API_KEY                  = local.api_key
     OPENAI_API_KEY           = var.openai_api_key
+    HUGGINGFACE_TOKEN        = var.huggingface_token
   }
 }
 
