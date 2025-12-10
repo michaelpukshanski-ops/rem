@@ -165,8 +165,13 @@ output "ecs_capacity_provider" {
 }
 
 output "ecs_logs_group" {
-  description = "CloudWatch Logs group for ECS worker"
+  description = "CloudWatch Logs group for ECS worker tasks (application logs)"
   value       = aws_cloudwatch_log_group.worker.name
+}
+
+output "ecs_instance_logs_group" {
+  description = "CloudWatch Logs group for EC2 instance logs (ECS agent, system logs)"
+  value       = aws_cloudwatch_log_group.instance_logs.name
 }
 
 output "deployment_summary" {

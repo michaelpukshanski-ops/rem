@@ -108,8 +108,52 @@ resource "aws_launch_template" "ecs_spot" {
 
   user_data = base64encode(<<-EOF
     #!/bin/bash
+
+    # Configure ECS agent
     echo ECS_CLUSTER=${aws_ecs_cluster.transcription.name} >> /etc/ecs/ecs.config
     echo ECS_ENABLE_SPOT_INSTANCE_DRAINING=true >> /etc/ecs/ecs.config
+
+    # Install and configure CloudWatch agent
+    yum install -y amazon-cloudwatch-agent
+
+    # Create CloudWatch agent configuration
+    cat > /opt/aws/amazon-cloudwatch-agent/etc/config.json << 'CWCONFIG'
+    {
+      "logs": {
+        "logs_collected": {
+          "files": {
+            "collect_list": [
+              {
+                "file_path": "/var/log/ecs/ecs-agent.log",
+                "log_group_name": "/ecs/rem-instance-logs-${var.environment}",
+                "log_stream_name": "{instance_id}/ecs-agent.log",
+                "timezone": "UTC"
+              },
+              {
+                "file_path": "/var/log/ecs/ecs-init.log",
+                "log_group_name": "/ecs/rem-instance-logs-${var.environment}",
+                "log_stream_name": "{instance_id}/ecs-init.log",
+                "timezone": "UTC"
+              },
+              {
+                "file_path": "/var/log/messages",
+                "log_group_name": "/ecs/rem-instance-logs-${var.environment}",
+                "log_stream_name": "{instance_id}/messages",
+                "timezone": "UTC"
+              }
+            ]
+          }
+        }
+      }
+    }
+    CWCONFIG
+
+    # Start CloudWatch agent
+    /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+      -a fetch-config \
+      -m ec2 \
+      -s \
+      -c file:/opt/aws/amazon-cloudwatch-agent/etc/config.json
   EOF
   )
 
@@ -208,21 +252,38 @@ resource "aws_iam_role_policy_attachment" "ecs_instance" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
 }
 
+# Attach CloudWatch agent policy for sending logs
+resource "aws_iam_role_policy_attachment" "ecs_instance_cloudwatch" {
+  role       = aws_iam_role.ecs_instance.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
+
 resource "aws_iam_instance_profile" "ecs_instance" {
   name = "${var.project_name}-ecs-instance-${var.environment}"
   role = aws_iam_role.ecs_instance.name
 }
 
 # ============================================================================
-# CloudWatch Log Group
+# CloudWatch Log Groups
 # ============================================================================
 
+# ECS task logs (application logs)
 resource "aws_cloudwatch_log_group" "worker" {
   name              = "/ecs/${var.project_name}-transcription-worker-${var.environment}"
   retention_in_days = 7
-  
+
   tags = {
     Name = "REM Worker Logs"
+  }
+}
+
+# EC2 instance logs (ECS agent, system logs)
+resource "aws_cloudwatch_log_group" "instance_logs" {
+  name              = "/ecs/${var.project_name}-instance-logs-${var.environment}"
+  retention_in_days = 7
+
+  tags = {
+    Name = "REM Instance Logs"
   }
 }
 
