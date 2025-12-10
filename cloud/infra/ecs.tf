@@ -122,8 +122,7 @@ resource "aws_ecs_service" "worker" {
   cluster         = aws_ecs_cluster.transcription.id
   task_definition = aws_ecs_task_definition.worker.arn
   desired_count   = var.enable_ecs_worker ? 1 : 0
-  launch_type     = "FARGATE"
-  
+
   # Use Fargate Spot for 70% cost savings
   capacity_provider_strategy {
     capacity_provider = "FARGATE_SPOT"
