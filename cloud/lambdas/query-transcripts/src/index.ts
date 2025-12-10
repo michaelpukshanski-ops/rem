@@ -1,18 +1,24 @@
 /**
  * REM Query Transcripts Lambda
  * Searches transcripts by keyword and time range for ChatGPT integration
+ * Now with semantic search using OpenAI embeddings!
  */
 
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import OpenAI from 'openai';
 
 const dynamoClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const s3Client = new S3Client({});
 
 const DYNAMODB_TABLE = process.env.DYNAMODB_TABLE!;
 const TRANSCRIPTS_BUCKET = process.env.TRANSCRIPTS_BUCKET!;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+
+// Initialize OpenAI client if API key is available
+const openai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
 
 interface QueryRequest {
   userId: string;
@@ -27,6 +33,7 @@ interface TranscriptSegment {
   start: number;
   end: number;
   text: string;
+  embedding?: number[];
 }
 
 interface TranscriptData {
@@ -39,6 +46,9 @@ interface TranscriptData {
   durationSeconds: number;
   transcribedAt: string;
   whisperModel: string;
+  embedding?: number[];
+  summary?: string;
+  topics?: string[];
 }
 
 interface QueryResultSegment {
@@ -143,6 +153,128 @@ function formatForChatGPT(results: QueryResultSegment[]): ChatGPTMemory[] {
   });
 }
 
+async function generateQueryEmbedding(query: string): Promise<number[] | null> {
+  if (!openai) {
+    console.log('OpenAI not configured, skipping embedding generation');
+    return null;
+  }
+
+  try {
+    console.log(`Generating embedding for query: "${query}"`);
+    const response = await openai.embeddings.create({
+      model: 'text-embedding-3-small',
+      input: query,
+    });
+    return response.data[0].embedding;
+  } catch (error) {
+    console.error('Failed to generate query embedding:', error);
+    return null;
+  }
+}
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (!a || !b || a.length !== b.length) return 0;
+
+  const dotProduct = a.reduce((sum, val, i) => sum + val * b[i], 0);
+  const magnitudeA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
+  const magnitudeB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
+
+  if (magnitudeA === 0 || magnitudeB === 0) return 0;
+
+  return dotProduct / (magnitudeA * magnitudeB);
+}
+
+function semanticSearchInTranscript(
+  transcript: TranscriptData,
+  queryEmbedding: number[],
+  recordingStartedAt: string
+): QueryResultSegment[] {
+  const results: QueryResultSegment[] = [];
+
+  // Search in segments
+  for (let i = 0; i < transcript.segments.length; i++) {
+    const segment = transcript.segments[i];
+
+    if (!segment.embedding) continue;
+
+    const similarity = cosineSimilarity(queryEmbedding, segment.embedding);
+
+    // Only include segments with similarity > 0.7 (highly relevant)
+    if (similarity > 0.7) {
+      // Get context: include previous and next segments
+      const contextSegments = [];
+      if (i > 0) contextSegments.push(transcript.segments[i - 1].text);
+      contextSegments.push(segment.text);
+      if (i < transcript.segments.length - 1) contextSegments.push(transcript.segments[i + 1].text);
+
+      const contextText = contextSegments.join(' ');
+
+      results.push({
+        recordingId: transcript.recordingId,
+        deviceId: transcript.deviceId,
+        recordingStartedAt,
+        segmentStart: segment.start,
+        segmentEnd: segment.end,
+        text: contextText,
+        relevanceScore: similarity,
+      });
+    }
+  }
+
+  return results;
+}
+
+function hybridSearch(
+  transcript: TranscriptData,
+  query: string,
+  queryEmbedding: number[] | null,
+  recordingStartedAt: string
+): QueryResultSegment[] {
+  // Get keyword search results
+  const keywordResults = searchInTranscript(transcript, query, recordingStartedAt);
+
+  // If no embedding, return keyword results only
+  if (!queryEmbedding) {
+    return keywordResults;
+  }
+
+  // Get semantic search results
+  const semanticResults = semanticSearchInTranscript(transcript, queryEmbedding, recordingStartedAt);
+
+  // Combine results with hybrid scoring
+  const combinedMap = new Map<string, QueryResultSegment>();
+
+  // Add keyword results with 30% weight
+  for (const result of keywordResults) {
+    const key = `${result.recordingId}-${result.segmentStart}`;
+    combinedMap.set(key, {
+      ...result,
+      relevanceScore: (result.relevanceScore || 0) * 0.3,
+    });
+  }
+
+  // Add or merge semantic results with 70% weight
+  for (const result of semanticResults) {
+    const key = `${result.recordingId}-${result.segmentStart}`;
+    const existing = combinedMap.get(key);
+
+    if (existing) {
+      // Combine scores
+      existing.relevanceScore = (existing.relevanceScore || 0) + (result.relevanceScore || 0) * 0.7;
+    } else {
+      combinedMap.set(key, {
+        ...result,
+        relevanceScore: (result.relevanceScore || 0) * 0.7,
+      });
+    }
+  }
+
+  // Convert to array and sort by relevance
+  return Array.from(combinedMap.values()).sort((a, b) =>
+    (b.relevanceScore || 0) - (a.relevanceScore || 0)
+  );
+}
+
 export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
   console.log('Query transcripts request received');
   
@@ -212,21 +344,31 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     }
     
     console.log(`Found ${queryResult.Items.length} transcribed recordings`);
-    
+
+    // Generate query embedding for semantic search
+    const queryEmbedding = await generateQueryEmbedding(request.query);
+
+    if (queryEmbedding) {
+      console.log('Using hybrid search (keywords + semantic)');
+    } else {
+      console.log('Using keyword search only');
+    }
+
     // Search through transcripts
     const allResults: QueryResultSegment[] = [];
-    
+
     for (const item of queryResult.Items) {
       if (!item.transcriptS3Key) continue;
-      
+
       const transcript = await getTranscriptFromS3(item.transcriptS3Key);
       if (!transcript) continue;
-      
-      const matches = searchInTranscript(transcript, request.query, item.startedAt);
+
+      // Use hybrid search if embedding is available, otherwise keyword search
+      const matches = hybridSearch(transcript, request.query, queryEmbedding, item.startedAt);
       allResults.push(...matches);
     }
-    
-    // Sort by relevance score
+
+    // Sort by relevance score (already sorted by hybridSearch, but ensure consistency)
     allResults.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
 
     // Limit results

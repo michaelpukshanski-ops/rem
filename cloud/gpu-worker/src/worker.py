@@ -21,6 +21,7 @@ import boto3
 from botocore.exceptions import ClientError
 from faster_whisper import WhisperModel
 from dotenv import load_dotenv
+from openai import OpenAI
 
 # Load environment variables
 load_dotenv()
@@ -36,6 +37,10 @@ logger = logging.getLogger('rem-worker')
 s3_client = boto3.client('s3', region_name=os.getenv('AWS_REGION', 'us-east-1'))
 sqs_client = boto3.client('sqs', region_name=os.getenv('AWS_REGION', 'us-east-1'))
 dynamodb = boto3.resource('dynamodb', region_name=os.getenv('AWS_REGION', 'us-east-1'))
+
+# OpenAI client
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 # Configuration
 SQS_QUEUE_URL = os.getenv('SQS_QUEUE_URL')
@@ -126,10 +131,96 @@ def transcribe_audio(audio_path: str) -> Optional[Dict[str, Any]]:
         logger.info(f"Transcription complete in {duration:.2f}s")
         logger.info(f"Detected language: {info.language} ({info.language_probability:.2%})")
         logger.info(f"Found {len(segment_list)} segments")
-        
+
         return result
     except Exception as e:
         logger.error(f"Transcription failed: {e}")
+        return None
+
+
+def generate_embedding(text: str) -> Optional[List[float]]:
+    """Generate embedding for text using OpenAI."""
+    if not openai_client:
+        logger.warning("OpenAI client not configured, skipping embedding generation")
+        return None
+
+    try:
+        logger.info(f"Generating embedding for text ({len(text)} chars)")
+        response = openai_client.embeddings.create(
+            model="text-embedding-3-small",
+            input=text[:8000]  # Limit to ~8k chars to stay within token limits
+        )
+        embedding = response.data[0].embedding
+        logger.info(f"Generated embedding with {len(embedding)} dimensions")
+        return embedding
+    except Exception as e:
+        logger.error(f"Failed to generate embedding: {e}")
+        return None
+
+
+def generate_summary(text: str) -> Optional[str]:
+    """Generate AI summary of transcript using OpenAI."""
+    if not openai_client:
+        logger.warning("OpenAI client not configured, skipping summary generation")
+        return None
+
+    try:
+        logger.info(f"Generating summary for text ({len(text)} chars)")
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant that summarizes voice recordings. "
+                               "Create a concise 2-3 sentence summary of the key points."
+                },
+                {
+                    "role": "user",
+                    "content": f"Summarize this transcript:\n\n{text[:4000]}"
+                }
+            ],
+            max_tokens=150,
+            temperature=0.3
+        )
+        summary = response.choices[0].message.content.strip()
+        logger.info(f"Generated summary: {summary[:100]}...")
+        return summary
+    except Exception as e:
+        logger.error(f"Failed to generate summary: {e}")
+        return None
+
+
+def extract_topics(text: str) -> Optional[List[str]]:
+    """Extract topics from transcript using OpenAI."""
+    if not openai_client:
+        logger.warning("OpenAI client not configured, skipping topic extraction")
+        return None
+
+    try:
+        logger.info(f"Extracting topics from text ({len(text)} chars)")
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant that extracts key topics from voice recordings. "
+                               "Return ONLY a comma-separated list of 3-5 single-word or short-phrase topics. "
+                               "No explanations, just the topics."
+                },
+                {
+                    "role": "user",
+                    "content": f"Extract topics from this transcript:\n\n{text[:4000]}"
+                }
+            ],
+            max_tokens=50,
+            temperature=0.3
+        )
+        topics_str = response.choices[0].message.content.strip()
+        topics = [t.strip().lower() for t in topics_str.split(',')]
+        logger.info(f"Extracted topics: {topics}")
+        return topics
+    except Exception as e:
+        logger.error(f"Failed to extract topics: {e}")
         return None
 
 
@@ -167,32 +258,62 @@ def update_dynamodb_record(
     transcript_s3_key: str,
     language: str,
     duration_seconds: float,
+    embedding: Optional[List[float]] = None,
+    summary: Optional[str] = None,
+    topics: Optional[List[str]] = None,
     status: str = 'TRANSCRIBED'
 ) -> bool:
     """Update DynamoDB record with transcription results."""
     try:
         table = dynamodb.Table(DYNAMODB_TABLE)
-        
+
+        # Build update expression dynamically
+        update_parts = [
+            '#status = :status',
+            'transcriptS3Key = :key',
+            '#language = :lang',
+            'durationSeconds = :dur',
+            'updatedAt = :now'
+        ]
+
+        attr_names = {
+            '#status': 'status',
+            '#language': 'language'
+        }
+
+        attr_values = {
+            ':status': status,
+            ':key': transcript_s3_key,
+            ':lang': language,
+            ':dur': Decimal(str(duration_seconds)),
+            ':now': datetime.utcnow().isoformat() + 'Z'
+        }
+
+        # Add optional fields
+        if embedding:
+            update_parts.append('embedding = :embedding')
+            attr_values[':embedding'] = embedding
+
+        if summary:
+            update_parts.append('summary = :summary')
+            attr_values[':summary'] = summary
+
+        if topics:
+            update_parts.append('topics = :topics')
+            attr_values[':topics'] = topics
+
+        update_expression = 'SET ' + ', '.join(update_parts)
+
         table.update_item(
             Key={
                 'PK': user_id,
                 'SK': recording_id
             },
-            UpdateExpression='SET #status = :status, transcriptS3Key = :key, '
-                           '#language = :lang, durationSeconds = :dur, updatedAt = :now',
-            ExpressionAttributeNames={
-                '#status': 'status',
-                '#language': 'language'
-            },
-            ExpressionAttributeValues={
-                ':status': status,
-                ':key': transcript_s3_key,
-                ':lang': language,
-                ':dur': Decimal(str(duration_seconds)),
-                ':now': datetime.utcnow().isoformat() + 'Z'
-            }
+            UpdateExpression=update_expression,
+            ExpressionAttributeNames=attr_names,
+            ExpressionAttributeValues=attr_values
         )
-        
+
         logger.info(f"DynamoDB record updated: {recording_id}")
         return True
     except ClientError as e:
@@ -230,34 +351,62 @@ def process_message(message: Dict[str, Any]) -> bool:
             transcript_result = transcribe_audio(tmp_path)
             if not transcript_result:
                 return False
-            
+
+            full_text = transcript_result['full_text']
+
+            # Generate AI enhancements (embeddings, summary, topics)
+            logger.info("Generating AI enhancements...")
+            embedding = generate_embedding(full_text)
+            summary = generate_summary(full_text)
+            topics = extract_topics(full_text)
+
+            # Generate embeddings for each segment
+            segments_with_embeddings = []
+            for segment in transcript_result['segments']:
+                segment_embedding = generate_embedding(segment['text'])
+                segment_with_embedding = segment.copy()
+                if segment_embedding:
+                    segment_with_embedding['embedding'] = segment_embedding
+                segments_with_embeddings.append(segment_with_embedding)
+
             # Prepare transcript data
             transcript_data = {
                 'recordingId': recording_id,
                 'userId': user_id,
                 'deviceId': device_id,
                 'language': transcript_result['language'],
-                'segments': transcript_result['segments'],
-                'fullText': transcript_result['full_text'],
+                'segments': segments_with_embeddings,
+                'fullText': full_text,
                 'durationSeconds': transcript_result['duration_seconds'],
                 'transcribedAt': datetime.utcnow().isoformat() + 'Z',
                 'whisperModel': transcript_result['whisper_model']
             }
-            
+
+            # Add AI enhancements to transcript data
+            if embedding:
+                transcript_data['embedding'] = embedding
+            if summary:
+                transcript_data['summary'] = summary
+            if topics:
+                transcript_data['topics'] = topics
+
             # Generate S3 key for transcript
             transcript_s3_key = f"transcripts/{user_id}/{device_id}/{recording_id}.json"
-            
+
             # Upload transcript
             if not upload_transcript_to_s3(transcript_data, transcript_s3_key):
                 return False
-            
+
             # Update DynamoDB
             if not update_dynamodb_record(
                 user_id,
                 recording_id,
                 transcript_s3_key,
                 transcript_result['language'],
-                transcript_result['duration_seconds']
+                transcript_result['duration_seconds'],
+                embedding,
+                summary,
+                topics
             ):
                 return False
             
