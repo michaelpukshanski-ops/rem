@@ -13,6 +13,7 @@ import time
 import tempfile
 import logging
 from datetime import datetime
+from decimal import Decimal
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
@@ -186,7 +187,7 @@ def update_dynamodb_record(
                 ':status': status,
                 ':key': transcript_s3_key,
                 ':lang': language,
-                ':dur': duration_seconds,
+                ':dur': Decimal(str(duration_seconds)),
                 ':now': datetime.utcnow().isoformat() + 'Z'
             }
         )
