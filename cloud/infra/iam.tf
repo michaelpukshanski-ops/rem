@@ -93,7 +93,8 @@ resource "aws_iam_role_policy" "transcription_dispatcher_lambda" {
         Effect = "Allow"
         Action = [
           "dynamodb:Query",
-          "dynamodb:GetItem"
+          "dynamodb:GetItem",
+          "dynamodb:UpdateItem"
         ]
         Resource = [
           aws_dynamodb_table.recordings.arn,
