@@ -149,7 +149,7 @@ def upload_transcript_to_s3(transcript_data: Dict[str, Any], s3_key: str) -> boo
         s3_client.put_object(
             Bucket=TRANSCRIPTS_BUCKET,
             Key=txt_key,
-            Body=transcript_data['full_text'],
+            Body=transcript_data['fullText'],
             ContentType='text/plain'
         )
         
