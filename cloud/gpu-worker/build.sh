@@ -34,23 +34,18 @@ aws ecr get-login-password --region "$REGION" | \
   docker login --username AWS --password-stdin "$ECR_REPO"
 echo ""
 
-# Build the Docker image
-echo "3. Building Docker image..."
-docker build -t "$REPOSITORY_NAME" .
-echo ""
-
-# Tag the image
-echo "4. Tagging image as 'latest'..."
-docker tag "$REPOSITORY_NAME:latest" "$ECR_REPO:latest"
-echo ""
-
-# Push to ECR
-echo "5. Pushing image to ECR..."
-docker push "$ECR_REPO:latest"
+# Build the Docker image for AMD64 (x86_64) platform using buildx
+echo "3. Building Docker image for linux/amd64..."
+echo "   (This may take 10-20 minutes due to cross-platform build)"
+docker buildx build \
+  --platform linux/amd64 \
+  --tag "$ECR_REPO:latest" \
+  --push \
+  .
 echo ""
 
 # Verify the push
-echo "6. Verifying image in ECR..."
+echo "4. Verifying image in ECR..."
 aws ecr describe-images \
   --repository-name "$REPOSITORY_NAME" \
   --region "$REGION" \
