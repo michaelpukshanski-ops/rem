@@ -35,11 +35,11 @@ aws ecr get-login-password --region "$AWS_REGION" | \
 echo "✅ Logged in to ECR"
 echo ""
 
-# Build Docker image
-echo "🔨 Building Docker image..."
+# Build Docker image for linux/amd64 (required for ECS Fargate)
+echo "🔨 Building Docker image for linux/amd64..."
 cd "$REPO_ROOT/cloud/gpu-worker"
 
-docker build -t rem-worker:latest .
+docker build --platform linux/amd64 -t rem-worker:latest .
 
 echo "✅ Docker image built"
 echo ""
