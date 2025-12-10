@@ -293,7 +293,7 @@ resource "aws_cloudwatch_log_group" "instance_logs" {
 
 resource "aws_ecs_task_definition" "worker" {
   family                   = "${var.project_name}-transcription-worker-${var.environment}"
-  network_mode             = "awsvpc"
+  network_mode             = "bridge"
   requires_compatibilities = ["EC2"]
   # Note: cpu and memory are defined at container level for EC2 launch type
   execution_role_arn       = aws_iam_role.ecs_execution.arn
@@ -353,12 +353,8 @@ resource "aws_ecs_service" "worker" {
     base              = 0
   }
 
-  network_configuration {
-    subnets         = local.ecs_subnets
-    security_groups = [aws_security_group.ecs_worker.id]
-    # Note: assign_public_ip not supported for EC2 launch type
-    # Public IP is assigned by the EC2 instance itself
-  }
+  # Note: network_configuration not needed for bridge mode
+  # Tasks use the EC2 instance's network interface and public IP
 
   # Wait for capacity provider to be ready
   depends_on = [aws_ecs_cluster_capacity_providers.transcription]
