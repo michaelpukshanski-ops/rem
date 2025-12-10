@@ -23,27 +23,33 @@ echo "📦 ECS FARGATE WORKER"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 if [ -n "$CLUSTER_NAME" ] && [ -n "$SERVICE_NAME" ]; then
-  aws ecs describe-services \
+  # Check if cluster exists
+  if aws ecs describe-services \
     --cluster "$CLUSTER_NAME" \
     --services "$SERVICE_NAME" \
     --query 'services[0].{Status:status,DesiredCount:desiredCount,RunningCount:runningCount,PendingCount:pendingCount}' \
-    --output table
-  
-  RUNNING_TASKS=$(aws ecs list-tasks \
-    --cluster "$CLUSTER_NAME" \
-    --service-name "$SERVICE_NAME" \
-    --query 'taskArns' \
-    --output text | wc -w | tr -d ' ')
-  
-  if [ "$RUNNING_TASKS" -gt 0 ]; then
-    echo ""
-    echo "✅ ECS worker is ACTIVE ($RUNNING_TASKS task(s) running)"
+    --output table 2>/dev/null; then
+
+    RUNNING_TASKS=$(aws ecs list-tasks \
+      --cluster "$CLUSTER_NAME" \
+      --service-name "$SERVICE_NAME" \
+      --query 'taskArns' \
+      --output text 2>/dev/null | wc -w | tr -d ' ')
+
+    if [ "$RUNNING_TASKS" -gt 0 ]; then
+      echo ""
+      echo "✅ ECS worker is ACTIVE ($RUNNING_TASKS task(s) running)"
+    else
+      echo ""
+      echo "⏸️  ECS worker is STOPPED (0 tasks running)"
+    fi
   else
-    echo ""
-    echo "⏸️  ECS worker is STOPPED (0 tasks running)"
+    echo "⚠️  ECS cluster not found - infrastructure not deployed yet"
+    echo "   Run: cd cloud/infra && terraform apply"
   fi
 else
-  echo "❌ ECS not configured"
+  echo "❌ ECS not configured - Terraform outputs not found"
+  echo "   Run: cd cloud/infra && terraform apply"
 fi
 
 echo ""
