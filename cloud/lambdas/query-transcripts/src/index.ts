@@ -51,6 +51,13 @@ interface QueryResultSegment {
   relevanceScore?: number;
 }
 
+interface ChatGPTMemory {
+  timestamp: string;
+  text: string;
+  context: string;
+  relevance: number;
+}
+
 async function getTranscriptFromS3(s3Key: string): Promise<TranscriptData | null> {
   try {
     const response = await s3Client.send(
@@ -77,31 +84,63 @@ function searchInTranscript(
 ): QueryResultSegment[] {
   const results: QueryResultSegment[] = [];
   const keywords = query.toLowerCase().split(/\s+/).filter(k => k.length > 2);
-  
-  for (const segment of transcript.segments) {
+
+  for (let i = 0; i < transcript.segments.length; i++) {
+    const segment = transcript.segments[i];
     const segmentText = segment.text.toLowerCase();
     let matchCount = 0;
-    
-    for (const keyword of keywords) {
-      if (segmentText.includes(keyword)) {
-        matchCount++;
+    let exactPhraseMatch = false;
+
+    // Check for exact phrase match
+    if (segmentText.includes(query.toLowerCase())) {
+      exactPhraseMatch = true;
+      matchCount = keywords.length * 2; // Boost exact matches
+    } else {
+      // Check for keyword matches
+      for (const keyword of keywords) {
+        if (segmentText.includes(keyword)) {
+          matchCount++;
+        }
       }
     }
-    
+
     if (matchCount > 0) {
+      // Get context: include previous and next segments for better understanding
+      const contextSegments = [];
+      if (i > 0) contextSegments.push(transcript.segments[i - 1].text);
+      contextSegments.push(segment.text);
+      if (i < transcript.segments.length - 1) contextSegments.push(transcript.segments[i + 1].text);
+
+      const contextText = contextSegments.join(' ');
+
       results.push({
         recordingId: transcript.recordingId,
         deviceId: transcript.deviceId,
         recordingStartedAt,
         segmentStart: segment.start,
         segmentEnd: segment.end,
-        text: segment.text,
-        relevanceScore: matchCount / keywords.length,
+        text: contextText, // Include context
+        relevanceScore: exactPhraseMatch ? 1.0 : matchCount / keywords.length,
       });
     }
   }
-  
+
   return results;
+}
+
+function formatForChatGPT(results: QueryResultSegment[]): ChatGPTMemory[] {
+  return results.map(result => {
+    const date = new Date(result.recordingStartedAt);
+    const timeOffset = Math.floor(result.segmentStart);
+    const timestamp = new Date(date.getTime() + timeOffset * 1000);
+
+    return {
+      timestamp: timestamp.toISOString(),
+      text: result.text,
+      context: `Recorded on ${date.toLocaleDateString()} at ${date.toLocaleTimeString()}`,
+      relevance: Math.round((result.relevanceScore || 0) * 100) / 100,
+    };
+  });
 }
 
 export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
@@ -189,17 +228,27 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     
     // Sort by relevance score
     allResults.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
-    
+
     // Limit results
     const limitedResults = allResults.slice(0, limit);
-    
+
     console.log(`Found ${allResults.length} matching segments, returning ${limitedResults.length}`);
-    
+
+    // Format for ChatGPT
+    const chatGPTMemories = formatForChatGPT(limitedResults);
+
+    // Create a summary for ChatGPT
+    const summary = chatGPTMemories.length > 0
+      ? `Found ${chatGPTMemories.length} relevant memories from your past recordings.`
+      : 'No relevant memories found for this query.';
+
     return {
       statusCode: 200,
       body: JSON.stringify({
         success: true,
-        results: limitedResults,
+        summary,
+        memories: chatGPTMemories,
+        rawResults: limitedResults, // Keep original format for backward compatibility
         totalMatches: allResults.length,
       }),
     };
