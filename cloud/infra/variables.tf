@@ -31,6 +31,13 @@ variable "api_key_value" {
   sensitive   = true
 }
 
+variable "openai_api_key" {
+  description = "OpenAI API key for embeddings and summarization"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "lambda_runtime" {
   description = "Lambda runtime for Node.js functions"
   type        = string
