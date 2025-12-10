@@ -3,11 +3,15 @@
 
 set -e
 
+# Get the absolute path to the repository root
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 echo "🐳 Building and pushing worker Docker image to ECR..."
 echo ""
 
 # Get ECR repository URL from Terraform
-cd "$(dirname "$0")/../cloud/infra"
+cd "$REPO_ROOT/cloud/infra"
 
 ECR_URL=$(terraform output -raw ecr_repository_url 2>/dev/null || echo "")
 AWS_REGION=$(terraform output -raw aws_region 2>/dev/null || echo "us-east-1")
@@ -33,7 +37,7 @@ echo ""
 
 # Build Docker image
 echo "🔨 Building Docker image..."
-cd "$(dirname "$0")/../cloud/gpu-worker"
+cd "$REPO_ROOT/cloud/gpu-worker"
 
 docker build -t rem-worker:latest .
 

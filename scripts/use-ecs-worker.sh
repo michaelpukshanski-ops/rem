@@ -3,11 +3,15 @@
 
 set -e
 
+# Get the absolute path to the repository root
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 echo "🔄 Switching to ECS FARGATE worker mode..."
 echo ""
 
 # Get ECS cluster and service names from Terraform
-cd "$(dirname "$0")/../cloud/infra"
+cd "$REPO_ROOT/cloud/infra"
 
 CLUSTER_NAME=$(terraform output -raw ecs_cluster_name 2>/dev/null || echo "")
 SERVICE_NAME=$(terraform output -raw ecs_service_name 2>/dev/null || echo "")

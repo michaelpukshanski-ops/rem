@@ -3,8 +3,12 @@
 
 set -e
 
+# Get the absolute path to the repository root
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 # Get log group from Terraform
-cd "$(dirname "$0")/../cloud/infra"
+cd "$REPO_ROOT/cloud/infra"
 
 LOG_GROUP=$(terraform output -raw ecs_logs_group 2>/dev/null || echo "")
 
