@@ -42,18 +42,20 @@ Add vector embeddings to enable semantic search - find memories by meaning, not 
 - [x] Added `openai>=1.0.0` to `cloud/gpu-worker/requirements.txt`
 - [x] Added `openai` to `cloud/lambdas/query-transcripts/package.json`
 
-#### 3. Worker Updates (TODO)
-- [ ] Add embedding generation function
-- [ ] Generate embeddings for full transcript
-- [ ] Generate embeddings for each segment
-- [ ] Store embeddings in DynamoDB
-- [ ] Add error handling for OpenAI API
+#### 3. Worker Updates ✅
+- [x] Add embedding generation function
+- [x] Generate embeddings for full transcript
+- [x] Generate embeddings for each segment
+- [x] Generate AI summary using GPT-4o-mini
+- [x] Extract topics from transcripts
+- [x] Store embeddings, summary, and topics in DynamoDB
+- [x] Add error handling for OpenAI API
 
-#### 4. Query Lambda Updates (TODO)
-- [ ] Add embedding generation for query
-- [ ] Implement cosine similarity calculation
-- [ ] Implement hybrid search (keywords + semantic)
-- [ ] Rank results by combined score
+#### 4. Query Lambda Updates ✅
+- [x] Add embedding generation for query
+- [x] Implement cosine similarity calculation
+- [x] Implement hybrid search (keywords + semantic)
+- [x] Rank results by combined score
 
 ### Data Model
 
@@ -204,11 +206,11 @@ function cosineSimilarity(a: number[], b: number[]): number {
 ## Progress Tracking
 
 - [x] Phase 1: Infrastructure setup
-- [ ] Phase 1: Worker implementation
-- [ ] Phase 1: Query Lambda implementation
-- [ ] Phase 1: Testing
-- [ ] Phase 2: Summarization
-- [ ] Phase 3: Topic Extraction
+- [x] Phase 1: Worker implementation
+- [x] Phase 1: Query Lambda implementation
+- [ ] Phase 1: Deployment and testing
+- [x] Phase 2: Summarization (BONUS: Already implemented!)
+- [x] Phase 3: Topic Extraction (BONUS: Already implemented!)
 - [ ] Phase 4: Speaker Diarization
 - [ ] Phase 5: API Authentication
 
