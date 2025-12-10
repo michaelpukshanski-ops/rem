@@ -116,7 +116,7 @@ variable "sqs_message_retention" {
 # ============================================================================
 
 variable "enable_ecs_worker" {
-  description = "Enable ECS Fargate worker (set to false to use local worker)"
+  description = "Enable ECS worker with EC2 Spot instances (set to false to use local worker)"
   type        = bool
   default     = false
 }
@@ -131,6 +131,24 @@ variable "ecs_memory" {
   description = "Memory for ECS task in MB"
   type        = number
   default     = 2048  # 2 GB
+}
+
+variable "ecs_instance_type" {
+  description = "EC2 instance type for ECS workers"
+  type        = string
+  default     = "t3.small"  # 2 vCPU, 2 GB RAM - enough for Whisper base model
+}
+
+variable "ecs_spot_max_price" {
+  description = "Maximum price for Spot instances (empty = on-demand price)"
+  type        = string
+  default     = ""  # Use on-demand price as max
+}
+
+variable "ecs_max_instances" {
+  description = "Maximum number of EC2 instances in Auto Scaling Group"
+  type        = number
+  default     = 3
 }
 
 variable "ecs_min_tasks" {

@@ -42,13 +42,8 @@ def get_whisper_model():
     global whisper_model
     if whisper_model is None:
         logger.info(f"Loading Whisper model: {WHISPER_MODEL}")
-        from faster_whisper import WhisperModel
-        whisper_model = WhisperModel(
-            WHISPER_MODEL,
-            device='cpu',
-            compute_type='int8',  # Optimized for CPU
-            download_root='/tmp/whisper-models'
-        )
+        import whisper
+        whisper_model = whisper.load_model(WHISPER_MODEL, download_root='/tmp/whisper-models')
         logger.info("Whisper model loaded")
     return whisper_model
 

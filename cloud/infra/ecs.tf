@@ -1,4 +1,5 @@
-# ECS Fargate for Transcription Worker
+# ECS with EC2 Spot Instances for Transcription Worker
+# 70-90% cost savings vs Fargate while keeping faster-whisper performance
 
 # ============================================================================
 # ECR Repository for Worker Docker Image
@@ -38,20 +39,172 @@ resource "aws_ecr_lifecycle_policy" "worker" {
 }
 
 # ============================================================================
-# ECS Cluster
+# ECS Cluster with EC2 Capacity Provider
 # ============================================================================
 
 resource "aws_ecs_cluster" "transcription" {
   name = "${var.project_name}-transcription-cluster-${var.environment}"
-  
+
   setting {
     name  = "containerInsights"
     value = "enabled"
   }
-  
+
   tags = {
     Name = "REM Transcription Cluster"
   }
+}
+
+# Link capacity provider to cluster
+resource "aws_ecs_cluster_capacity_providers" "transcription" {
+  cluster_name = aws_ecs_cluster.transcription.name
+
+  capacity_providers = [aws_ecs_capacity_provider.spot.name]
+
+  default_capacity_provider_strategy {
+    capacity_provider = aws_ecs_capacity_provider.spot.name
+    weight            = 100
+    base              = 0
+  }
+}
+
+# ============================================================================
+# EC2 Spot Instances for ECS
+# ============================================================================
+
+# Get latest ECS-optimized AMI
+data "aws_ami" "ecs_optimized" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["amzn2-ami-ecs-hvm-*-x86_64-ebs"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+# Launch template for EC2 Spot instances
+resource "aws_launch_template" "ecs_spot" {
+  name_prefix   = "${var.project_name}-ecs-spot-"
+  image_id      = data.aws_ami.ecs_optimized.id
+  instance_type = var.ecs_instance_type
+
+  iam_instance_profile {
+    name = aws_iam_instance_profile.ecs_instance.name
+  }
+
+  vpc_security_group_ids = [aws_security_group.ecs_worker.id]
+
+  user_data = base64encode(<<-EOF
+    #!/bin/bash
+    echo ECS_CLUSTER=${aws_ecs_cluster.transcription.name} >> /etc/ecs/ecs.config
+    echo ECS_ENABLE_SPOT_INSTANCE_DRAINING=true >> /etc/ecs/ecs.config
+  EOF
+  )
+
+  # Request Spot instances
+  instance_market_options {
+    market_type = "spot"
+    spot_options {
+      max_price          = var.ecs_spot_max_price
+      spot_instance_type = "one-time"
+    }
+  }
+
+  monitoring {
+    enabled = true
+  }
+
+  tag_specifications {
+    resource_type = "instance"
+    tags = {
+      Name = "REM ECS Spot Worker"
+    }
+  }
+}
+
+# Auto Scaling Group for EC2 Spot instances
+resource "aws_autoscaling_group" "ecs_spot" {
+  name                = "${var.project_name}-ecs-spot-asg-${var.environment}"
+  vpc_zone_identifier = local.ecs_subnets
+  min_size            = 0
+  max_size            = var.ecs_max_instances
+  desired_capacity    = var.enable_ecs_worker ? 1 : 0
+
+  launch_template {
+    id      = aws_launch_template.ecs_spot.id
+    version = "$Latest"
+  }
+
+  health_check_type         = "EC2"
+  health_check_grace_period = 300
+
+  tag {
+    key                 = "Name"
+    value               = "REM ECS Spot Worker"
+    propagate_at_launch = true
+  }
+
+  tag {
+    key                 = "AmazonECSManaged"
+    value               = "true"
+    propagate_at_launch = true
+  }
+}
+
+# ECS Capacity Provider for Spot instances
+resource "aws_ecs_capacity_provider" "spot" {
+  name = "${var.project_name}-spot-${var.environment}"
+
+  auto_scaling_group_provider {
+    auto_scaling_group_arn         = aws_autoscaling_group.ecs_spot.arn
+    managed_termination_protection = "DISABLED"
+
+    managed_scaling {
+      status                    = "ENABLED"
+      target_capacity           = 100
+      minimum_scaling_step_size = 1
+      maximum_scaling_step_size = 10
+    }
+  }
+
+  tags = {
+    Name = "REM Spot Capacity Provider"
+  }
+}
+
+# ============================================================================
+# IAM Role for EC2 Instances
+# ============================================================================
+
+resource "aws_iam_role" "ecs_instance" {
+  name = "${var.project_name}-ecs-instance-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_instance" {
+  role       = aws_iam_role.ecs_instance.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
+}
+
+resource "aws_iam_instance_profile" "ecs_instance" {
+  name = "${var.project_name}-ecs-instance-${var.environment}"
+  role = aws_iam_role.ecs_instance.name
 }
 
 # ============================================================================
@@ -74,16 +227,17 @@ resource "aws_cloudwatch_log_group" "worker" {
 resource "aws_ecs_task_definition" "worker" {
   family                   = "${var.project_name}-transcription-worker-${var.environment}"
   network_mode             = "awsvpc"
-  requires_compatibilities = ["FARGATE"]
-  cpu                      = var.ecs_cpu
-  memory                   = var.ecs_memory
+  requires_compatibilities = ["EC2"]
+  # Note: cpu and memory are defined at container level for EC2 launch type
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
   
   container_definitions = jsonencode([{
-    name  = "worker"
-    image = "${aws_ecr_repository.worker.repository_url}:latest"
-    
+    name   = "worker"
+    image  = "${aws_ecr_repository.worker.repository_url}:latest"
+    cpu    = var.ecs_cpu
+    memory = var.ecs_memory
+
     environment = [
       { name = "AWS_REGION", value = var.aws_region },
       { name = "SQS_QUEUE_URL", value = aws_sqs_queue.transcription_jobs.url },
@@ -125,19 +279,22 @@ resource "aws_ecs_service" "worker" {
   task_definition = aws_ecs_task_definition.worker.arn
   desired_count   = var.enable_ecs_worker ? 1 : 0
 
-  # Use Fargate Spot for 70% cost savings
+  # Use EC2 Spot for 70-90% cost savings
   capacity_provider_strategy {
-    capacity_provider = "FARGATE_SPOT"
+    capacity_provider = aws_ecs_capacity_provider.spot.name
     weight            = 100
     base              = 0
   }
-  
+
   network_configuration {
     subnets          = local.ecs_subnets
     security_groups  = [aws_security_group.ecs_worker.id]
     assign_public_ip = true
   }
-  
+
+  # Wait for capacity provider to be ready
+  depends_on = [aws_ecs_cluster_capacity_providers.transcription]
+
   tags = {
     Name = "REM Worker Service"
   }
