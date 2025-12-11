@@ -1,5 +1,6 @@
-# ECS with EC2 Spot Instances for Transcription Worker
-# 70-90% cost savings vs Fargate while keeping faster-whisper performance
+# ECS with Fargate Spot for Transcription Worker
+# Scale-to-zero with auto-scaling based on SQS queue depth
+# Cost: ~$0.14/month for 1 hour/day usage, ~$3.38/month for always-on
 
 # ============================================================================
 # ECR Repository for Worker Docker Image
@@ -279,16 +280,6 @@ resource "aws_cloudwatch_log_group" "worker" {
 
   tags = {
     Name = "REM Worker Logs"
-  }
-}
-
-# EC2 instance logs (ECS agent, system logs)
-resource "aws_cloudwatch_log_group" "instance_logs" {
-  name              = "/ecs/${var.project_name}-instance-logs-${var.environment}"
-  retention_in_days = 7
-
-  tags = {
-    Name = "REM Instance Logs"
   }
 }
 
