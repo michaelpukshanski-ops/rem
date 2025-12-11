@@ -154,24 +154,14 @@ output "ecs_worker_enabled" {
   value       = var.enable_ecs_worker
 }
 
-output "ecs_instance_type" {
-  description = "EC2 instance type for ECS Spot workers"
-  value       = var.ecs_instance_type
-}
-
 output "ecs_capacity_provider" {
-  description = "ECS capacity provider (EC2 Spot)"
-  value       = aws_ecs_capacity_provider.spot.name
+  description = "ECS capacity provider (Fargate Spot)"
+  value       = "FARGATE_SPOT"
 }
 
 output "ecs_logs_group" {
   description = "CloudWatch Logs group for ECS worker tasks (application logs)"
   value       = aws_cloudwatch_log_group.worker.name
-}
-
-output "ecs_instance_logs_group" {
-  description = "CloudWatch Logs group for EC2 instance logs (ECS agent, system logs)"
-  value       = aws_cloudwatch_log_group.instance_logs.name
 }
 
 output "deployment_summary" {
