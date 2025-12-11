@@ -55,23 +55,27 @@ resource "aws_ecs_cluster" "transcription" {
   }
 }
 
-# Link capacity provider to cluster
+# Link Fargate capacity providers to cluster
 resource "aws_ecs_cluster_capacity_providers" "transcription" {
   cluster_name = aws_ecs_cluster.transcription.name
 
-  capacity_providers = [aws_ecs_capacity_provider.spot.name]
+  capacity_providers = ["FARGATE", "FARGATE_SPOT"]
 
   default_capacity_provider_strategy {
-    capacity_provider = aws_ecs_capacity_provider.spot.name
+    capacity_provider = "FARGATE_SPOT"
     weight            = 100
     base              = 0
   }
 }
 
 # ============================================================================
-# EC2 Spot Instances for ECS
+# EC2 Spot Instances for ECS (DISABLED - Using Fargate Instead)
 # ============================================================================
 
+# Commented out EC2 resources - using Fargate for simplicity and scale-to-zero
+# Uncomment these if you want to switch back to EC2 for cost savings on always-on workloads
+
+/*
 # Get latest ECS-optimized AMI
 data "aws_ami" "ecs_optimized" {
   most_recent = true
@@ -262,6 +266,7 @@ resource "aws_iam_instance_profile" "ecs_instance" {
   name = "${var.project_name}-ecs-instance-${var.environment}"
   role = aws_iam_role.ecs_instance.name
 }
+*/
 
 # ============================================================================
 # CloudWatch Log Groups
@@ -293,17 +298,16 @@ resource "aws_cloudwatch_log_group" "instance_logs" {
 
 resource "aws_ecs_task_definition" "worker" {
   family                   = "${var.project_name}-transcription-worker-${var.environment}"
-  network_mode             = "bridge"
-  requires_compatibilities = ["EC2"]
-  # Note: cpu and memory are defined at container level for EC2 launch type
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = var.ecs_cpu
+  memory                   = var.ecs_memory
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
   
   container_definitions = jsonencode([{
     name   = "worker"
     image  = "${aws_ecr_repository.worker.repository_url}:latest"
-    cpu    = var.ecs_cpu
-    memory = var.ecs_memory
 
     environment = [
       { name = "AWS_REGION", value = var.aws_region },
@@ -346,18 +350,18 @@ resource "aws_ecs_service" "worker" {
   task_definition = aws_ecs_task_definition.worker.arn
   desired_count   = var.enable_ecs_worker ? 1 : 0
 
-  # Use EC2 Spot for 70-90% cost savings
+  # Use Fargate Spot for 70% cost savings
   capacity_provider_strategy {
-    capacity_provider = aws_ecs_capacity_provider.spot.name
+    capacity_provider = "FARGATE_SPOT"
     weight            = 100
     base              = 0
   }
 
-  # Note: network_configuration not needed for bridge mode
-  # Tasks use the EC2 instance's network interface and public IP
-
-  # Wait for capacity provider to be ready
-  depends_on = [aws_ecs_cluster_capacity_providers.transcription]
+  network_configuration {
+    subnets          = local.ecs_subnets
+    security_groups  = [aws_security_group.ecs_worker.id]
+    assign_public_ip = true
+  }
 
   tags = {
     Name = "REM Worker Service"
