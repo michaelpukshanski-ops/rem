@@ -30,6 +30,47 @@
 #define WAV_HEADER_SIZE     44
 
 // ============================================================================
+// Voice Activity Detection (VAD) Configuration
+// ============================================================================
+
+// Enable/disable VAD (set to 0 to record continuously like before)
+#define VAD_ENABLED         1
+
+// RMS threshold for speech detection (0-32767 for 16-bit audio)
+// Lower = more sensitive, Higher = less sensitive
+// Typical values: 200-500 for quiet room, 500-1000 for noisy environment
+#define VAD_THRESHOLD       300
+
+// How long speech must be detected to start recording (ms)
+// Prevents triggering on brief noises
+#define VAD_SPEECH_START_MS 100
+
+// How long silence must last to stop recording (ms)
+// Keeps recording through brief pauses in speech
+#define VAD_SILENCE_TIMEOUT_MS  3000
+
+// Pre-buffer duration (ms) - captures audio before speech is detected
+// So we don't miss the beginning of words
+#define VAD_PREBUFFER_MS    500
+
+// Minimum chunk duration to save (ms)
+// Don't save very short recordings (likely just noise)
+#define VAD_MIN_CHUNK_MS    2000
+
+// Maximum silence in a chunk before forcing save (ms)
+// Even if speech continues, save periodically
+#define VAD_MAX_CHUNK_MS    CHUNK_DURATION_MS
+
+// Debug VAD decisions
+#define DEBUG_VAD           0
+
+#if DEBUG_VAD
+  #define VAD_DEBUG_PRINTF(...) Serial.printf(__VA_ARGS__)
+#else
+  #define VAD_DEBUG_PRINTF(...)
+#endif
+
+// ============================================================================
 // Storage Configuration
 // ============================================================================
 

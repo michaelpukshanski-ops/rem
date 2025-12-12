@@ -11,6 +11,7 @@
 #include <ArduinoJson.h>
 #include <driver/i2s.h>
 #include <time.h>
+#include <math.h>
 #include <WiFiManager.h>
 #include "config.h"
 #include "secrets.h"
@@ -23,7 +24,29 @@ struct RecordingState {
   unsigned long chunkStartMillis;
   size_t bytesWritten;
   bool isRecording;
+  bool hasSpeech;  // Whether current chunk contains any speech
 } recording;
+
+#if VAD_ENABLED
+// VAD State
+struct VADState {
+  bool speechDetected;           // Currently detecting speech
+  unsigned long speechStartTime; // When speech started (for debounce)
+  unsigned long silenceStartTime; // When silence started
+  bool isCapturing;              // Actively capturing audio to file
+  uint16_t currentRMS;           // Current audio level
+
+  // Circular pre-buffer to capture audio before speech detection
+  static const size_t PREBUFFER_SIZE = (SAMPLE_RATE * 2 * VAD_PREBUFFER_MS) / 1000; // bytes
+  uint8_t* preBuffer;
+  size_t preBufferHead;
+  size_t preBufferFill;
+
+  VADState() : speechDetected(false), speechStartTime(0), silenceStartTime(0),
+               isCapturing(false), currentRMS(0), preBuffer(nullptr),
+               preBufferHead(0), preBufferFill(0) {}
+} vadState;
+#endif
 
 struct UploadState {
   unsigned long lastWiFiCheck;
@@ -62,6 +85,13 @@ void cleanupStorage();
 String getCurrentTimestamp();
 String getISOTimestamp(unsigned long ut);
 unsigned long getUnixTime();
+#if VAD_ENABLED
+void setupVAD();
+uint16_t calculateRMS(uint8_t* buffer, size_t length);
+void addToPreBuffer(uint8_t* data, size_t length);
+void flushPreBufferToFile();
+void finishCurrentChunk(bool discard);
+#endif
 
 void setup() {
   Serial.begin(115200);
@@ -78,14 +108,23 @@ void setup() {
   setupWiFi();
   setupTime();
   setupI2S();
+#if VAD_ENABLED
+  setupVAD();
+#endif
 
   recording.isRecording = false;
+  recording.hasSpeech = false;
   uploadState.lastWiFiCheck = 0;
   uploadState.consecutiveFailures = 0;
   uploadState.isConnected = false;
 
   loadUploadIndex();
+#if VAD_ENABLED
+  // With VAD, we don't start recording until speech is detected
+  DEBUG_PRINTLN("VAD enabled - waiting for speech...");
+#else
   startNewRecordingChunk();
+#endif
   DEBUG_PRINTLN("Setup complete\n");
 }
 
@@ -275,46 +314,233 @@ unsigned long getUnixTime() {
   return (unsigned long)now;
 }
 
+#if VAD_ENABLED
+void setupVAD() {
+  DEBUG_PRINTLN("Init VAD...");
+  vadState.preBuffer = (uint8_t*)malloc(VADState::PREBUFFER_SIZE);
+  if (!vadState.preBuffer) {
+    DEBUG_PRINTLN("VAD pre-buffer alloc FAIL!");
+  } else {
+    DEBUG_PRINTF("VAD pre-buffer: %d bytes\n", VADState::PREBUFFER_SIZE);
+  }
+  vadState.speechDetected = false;
+  vadState.isCapturing = false;
+  vadState.preBufferHead = 0;
+  vadState.preBufferFill = 0;
+  DEBUG_PRINTF("VAD threshold: %d, silence timeout: %dms\n", VAD_THRESHOLD, VAD_SILENCE_TIMEOUT_MS);
+}
+
+uint16_t calculateRMS(uint8_t* buffer, size_t length) {
+  // Calculate RMS of 16-bit audio samples
+  int16_t* samples = (int16_t*)buffer;
+  size_t numSamples = length / 2;
+  if (numSamples == 0) return 0;
+
+  uint64_t sumSquares = 0;
+  for (size_t i = 0; i < numSamples; i++) {
+    int32_t sample = samples[i];
+    sumSquares += sample * sample;
+  }
+
+  return (uint16_t)sqrt((double)sumSquares / numSamples);
+}
+
+void addToPreBuffer(uint8_t* data, size_t length) {
+  if (!vadState.preBuffer) return;
+
+  // Add data to circular buffer
+  for (size_t i = 0; i < length; i++) {
+    vadState.preBuffer[vadState.preBufferHead] = data[i];
+    vadState.preBufferHead = (vadState.preBufferHead + 1) % VADState::PREBUFFER_SIZE;
+    if (vadState.preBufferFill < VADState::PREBUFFER_SIZE) {
+      vadState.preBufferFill++;
+    }
+  }
+}
+
+void flushPreBufferToFile() {
+  if (!vadState.preBuffer || vadState.preBufferFill == 0) return;
+  if (!recording.currentFile) return;
+
+  VAD_DEBUG_PRINTF("Flushing %d bytes from pre-buffer\n", vadState.preBufferFill);
+
+  // Write pre-buffer to file (handle wrap-around)
+  if (vadState.preBufferFill < VADState::PREBUFFER_SIZE) {
+    // Buffer hasn't wrapped yet
+    size_t start = vadState.preBufferHead - vadState.preBufferFill;
+    recording.bytesWritten += recording.currentFile.write(vadState.preBuffer + start, vadState.preBufferFill);
+  } else {
+    // Buffer has wrapped - write in two parts
+    size_t firstPart = VADState::PREBUFFER_SIZE - vadState.preBufferHead;
+    recording.bytesWritten += recording.currentFile.write(vadState.preBuffer + vadState.preBufferHead, firstPart);
+    recording.bytesWritten += recording.currentFile.write(vadState.preBuffer, vadState.preBufferHead);
+  }
+
+  // Clear pre-buffer
+  vadState.preBufferHead = 0;
+  vadState.preBufferFill = 0;
+}
+
+void finishCurrentChunk(bool discard) {
+  if (!recording.currentFile) return;
+
+  String filename = recording.currentFilename;
+
+  updateWavHeader(recording.currentFile);
+  recording.currentFile.close();
+
+  if (discard || !recording.hasSpeech) {
+    // Delete the file - it was silent
+    DEBUG_PRINTF("Discarding silent chunk: %s\n", filename.c_str());
+    SPIFFS.remove(filename);
+  } else {
+    DEBUG_PRINTF("Saved chunk with speech: %s (%d bytes)\n", filename.c_str(), recording.bytesWritten);
+  }
+
+  recording.isRecording = false;
+  recording.hasSpeech = false;
+  vadState.isCapturing = false;
+}
+#endif
+
 void startNewRecordingChunk() {
+#if VAD_ENABLED
+  // With VAD, we don't close the old file here - finishCurrentChunk handles that
+  if (recording.currentFile && !vadState.isCapturing) {
+    // This shouldn't happen with VAD, but handle it gracefully
+    updateWavHeader(recording.currentFile);
+    recording.currentFile.close();
+  }
+#else
   if (recording.currentFile) {
     updateWavHeader(recording.currentFile);
     recording.currentFile.close();
     DEBUG_PRINTF("Closed: %s\n", recording.currentFilename.c_str());
   }
-  
+#endif
+
   String ts = getCurrentTimestamp();
   recording.currentFilename = String(RECORDING_DIR) + "/" + ts + ".wav";
   DEBUG_PRINTF("New chunk: %s\n", recording.currentFilename.c_str());
-  
+
   recording.currentFile = SPIFFS.open(recording.currentFilename, FILE_WRITE);
   if (!recording.currentFile) {
     DEBUG_PRINTLN("File create FAIL");
     recording.isRecording = false;
     return;
   }
-  
+
   writeWavHeader(recording.currentFile, SAMPLE_RATE, BITS_PER_SAMPLE, CHANNELS);
   recording.chunkStartTime = getUnixTime();
   recording.chunkStartMillis = millis();
   recording.bytesWritten = WAV_HEADER_SIZE;
   recording.isRecording = true;
+  recording.hasSpeech = false;
+
+#if VAD_ENABLED
+  vadState.isCapturing = true;
+  // Flush pre-buffer to capture audio before speech was detected
+  flushPreBufferToFile();
+#endif
 }
 
+#if VAD_ENABLED
+void audioRecordingTask() {
+  // Read audio from I2S
+  uint8_t buf[I2S_READ_LEN];
+  size_t br = 0;
+  if (i2s_read(I2S_PORT, buf, I2S_READ_LEN, &br, portMAX_DELAY) != ESP_OK || br == 0) {
+    return;
+  }
+
+  // Calculate RMS for VAD
+  uint16_t rms = calculateRMS(buf, br);
+  vadState.currentRMS = rms;
+  bool isSpeech = (rms >= VAD_THRESHOLD);
+
+  unsigned long now = millis();
+
+  if (!vadState.isCapturing) {
+    // Not currently recording - buffer audio and watch for speech
+    addToPreBuffer(buf, br);
+
+    if (isSpeech) {
+      if (!vadState.speechDetected) {
+        // Speech just started
+        vadState.speechDetected = true;
+        vadState.speechStartTime = now;
+        VAD_DEBUG_PRINTF("Speech start detected (RMS: %d)\n", rms);
+      } else if (now - vadState.speechStartTime >= VAD_SPEECH_START_MS) {
+        // Speech confirmed - start recording
+        DEBUG_PRINTF("Speech confirmed, starting recording (RMS: %d)\n", rms);
+        startNewRecordingChunk();
+        recording.hasSpeech = true;
+      }
+    } else {
+      // Silence - reset speech detection
+      vadState.speechDetected = false;
+    }
+  } else {
+    // Currently recording - write audio and watch for silence
+    recording.bytesWritten += recording.currentFile.write(buf, br);
+
+    if (isSpeech) {
+      // Speech detected - reset silence timer
+      vadState.silenceStartTime = 0;
+      recording.hasSpeech = true;
+      VAD_DEBUG_PRINTF("Speech (RMS: %d)\n", rms);
+    } else {
+      // Silence
+      if (vadState.silenceStartTime == 0) {
+        vadState.silenceStartTime = now;
+        VAD_DEBUG_PRINTF("Silence started (RMS: %d)\n", rms);
+      } else if (now - vadState.silenceStartTime >= VAD_SILENCE_TIMEOUT_MS) {
+        // Silence timeout - finish chunk
+        DEBUG_PRINTF("Silence timeout, finishing chunk\n");
+        finishCurrentChunk(false);
+        cleanupStorage();
+        return;
+      }
+    }
+
+    // Check max chunk duration
+    if (now - recording.chunkStartMillis >= VAD_MAX_CHUNK_MS) {
+      DEBUG_PRINTF("Max chunk duration reached\n");
+      finishCurrentChunk(false);
+      cleanupStorage();
+      // If still speaking, start a new chunk immediately
+      if (isSpeech) {
+        startNewRecordingChunk();
+        recording.hasSpeech = true;
+      }
+      return;
+    }
+
+    // Check minimum chunk duration before allowing silence-based finish
+    if (now - recording.chunkStartMillis < VAD_MIN_CHUNK_MS) {
+      // Don't finish yet, even if silent
+      vadState.silenceStartTime = 0;
+    }
+  }
+}
+#else
+// Original non-VAD version
 void audioRecordingTask() {
   if (!recording.isRecording) return;
-  
+
   if (millis() - recording.chunkStartMillis >= CHUNK_DURATION_MS) {
     startNewRecordingChunk();
     cleanupStorage();
     return;
   }
-  
+
   uint8_t buf[I2S_READ_LEN];
   size_t br = 0;
   if (i2s_read(I2S_PORT, buf, I2S_READ_LEN, &br, portMAX_DELAY) == ESP_OK && br > 0) {
     recording.bytesWritten += recording.currentFile.write(buf, br);
   }
 }
+#endif
 
 void loadUploadIndex() {
   File f = SPIFFS.open(UPLOAD_INDEX_FILE, FILE_READ);
