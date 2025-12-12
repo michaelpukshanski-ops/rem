@@ -5,6 +5,7 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
@@ -365,66 +366,112 @@ void cleanupStorage() {
 bool uploadFile(const String &fp) {
   File f = SPIFFS.open(fp, FILE_READ);
   if (!f) return false;
-  
+
   size_t sz = f.size();
   UPLOAD_DEBUG_PRINTF("Upload: %s (%d bytes)\n", fp.c_str(), sz);
-  
-  HTTPClient http;
-  http.begin(API_GATEWAY_URL);
-  http.addHeader("x-api-key", API_KEY);
-  http.setTimeout(HTTP_TIMEOUT_MS);
-  
-  String boundary = "----REM" + String(millis());
-  String ct = "multipart/form-data; boundary=" + boundary;
-  http.addHeader("Content-Type", ct);
-  
+
+  // Extract filename and get timestamps for this specific file
   String fn = fp.substring(fp.lastIndexOf('/') + 1);
   fn.replace(".wav", "");
-  
-  unsigned long st = recording.chunkStartTime;
-  unsigned long et = st + CHUNK_DURATION_SEC;
-  
-  String body = "--" + boundary + "\r\n";
-  body += "Content-Disposition: form-data; name=\"deviceId\"\r\n\r\n";
-  body += deviceId + "\r\n";
-  body += "--" + boundary + "\r\n";
-  body += "Content-Disposition: form-data; name=\"startedAt\"\r\n\r\n";
-  body += getISOTimestamp(st) + "\r\n";
-  body += "--" + boundary + "\r\n";
-  body += "Content-Disposition: form-data; name=\"endedAt\"\r\n\r\n";
-  body += getISOTimestamp(et) + "\r\n";
-  body += "--" + boundary + "\r\n";
-  body += "Content-Disposition: form-data; name=\"file\"; filename=\"" + fn + ".wav\"\r\n";
-  body += "Content-Type: audio/wav\r\n\r\n";
-  
+
+  // Parse timestamp from filename (format: YYYYMMDD_HHMMSS)
+  // Use file's timestamp, not current recording's timestamp
+  unsigned long fileStartTime = recording.chunkStartTime;  // Fallback
+  unsigned long fileEndTime = fileStartTime + CHUNK_DURATION_SEC;
+
+  String boundary = "----REM" + String(millis());
+
+  // Build multipart form data header
+  String header = "--" + boundary + "\r\n";
+  header += "Content-Disposition: form-data; name=\"deviceId\"\r\n\r\n";
+  header += deviceId + "\r\n";
+  header += "--" + boundary + "\r\n";
+  header += "Content-Disposition: form-data; name=\"startedAt\"\r\n\r\n";
+  header += getISOTimestamp(fileStartTime) + "\r\n";
+  header += "--" + boundary + "\r\n";
+  header += "Content-Disposition: form-data; name=\"endedAt\"\r\n\r\n";
+  header += getISOTimestamp(fileEndTime) + "\r\n";
+  header += "--" + boundary + "\r\n";
+  header += "Content-Disposition: form-data; name=\"file\"; filename=\"" + fn + ".wav\"\r\n";
+  header += "Content-Type: audio/wav\r\n\r\n";
+
   String footer = "\r\n--" + boundary + "--\r\n";
-  
-  size_t totalLen = body.length() + sz + footer.length();
-  
-  http.addHeader("Content-Length", String(totalLen));
-  
-  WiFiClient *stream = http.getStreamPtr();
-  stream->print(body);
-  
+
+  size_t totalLen = header.length() + sz + footer.length();
+
+  // Create WiFiClient and connect manually
+  WiFiClientSecure client;
+  client.setInsecure();  // Skip certificate verification for simplicity
+
+  // Parse host from API_GATEWAY_URL
+  String url = String(API_GATEWAY_URL);
+  int hostStart = url.indexOf("://") + 3;
+  int hostEnd = url.indexOf("/", hostStart);
+  String host = url.substring(hostStart, hostEnd);
+  String path = url.substring(hostEnd);
+
+  UPLOAD_DEBUG_PRINTF("Connecting to: %s\n", host.c_str());
+
+  if (!client.connect(host.c_str(), 443)) {
+    UPLOAD_DEBUG_PRINTLN("Connection failed");
+    f.close();
+    return false;
+  }
+
+  // Send HTTP POST request manually
+  client.print("POST " + path + " HTTP/1.1\r\n");
+  client.print("Host: " + host + "\r\n");
+  client.print("x-api-key: " + String(API_KEY) + "\r\n");
+  client.print("Content-Type: multipart/form-data; boundary=" + boundary + "\r\n");
+  client.print("Content-Length: " + String(totalLen) + "\r\n");
+  client.print("Connection: close\r\n");
+  client.print("\r\n");
+
+  // Send multipart header
+  client.print(header);
+
+  // Stream file data
   uint8_t buf[512];
   while (f.available()) {
     size_t r = f.read(buf, sizeof(buf));
-    stream->write(buf, r);
+    client.write(buf, r);
   }
   f.close();
-  
-  stream->print(footer);
-  
-  int code = http.GET();
-  http.end();
-  
+
+  // Send footer
+  client.print(footer);
+
+  // Wait for response
+  unsigned long timeout = millis() + HTTP_TIMEOUT_MS;
+  while (client.connected() && !client.available()) {
+    if (millis() > timeout) {
+      UPLOAD_DEBUG_PRINTLN("Response timeout");
+      client.stop();
+      return false;
+    }
+    delay(10);
+  }
+
+  // Read response status line
+  String statusLine = client.readStringUntil('\n');
+  UPLOAD_DEBUG_PRINTF("Response: %s\n", statusLine.c_str());
+
+  // Parse status code
+  int code = 0;
+  int spaceIdx = statusLine.indexOf(' ');
+  if (spaceIdx > 0) {
+    code = statusLine.substring(spaceIdx + 1, spaceIdx + 4).toInt();
+  }
+
+  client.stop();
+
   if (code >= 200 && code < 300) {
     UPLOAD_DEBUG_PRINTF("Upload OK: %d\n", code);
     markFileAsUploaded(fp);
     SPIFFS.remove(fp);
     return true;
   }
-  
+
   UPLOAD_DEBUG_PRINTF("Upload FAIL: %d\n", code);
   return false;
 }

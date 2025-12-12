@@ -19,7 +19,7 @@ async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function findRecordingWithRetry(deviceId: string, s3Key: string, maxRetries = 3): Promise<any> {
+async function findRecordingWithRetry(deviceId: string, s3Key: string, maxRetries = 5): Promise<any> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     // Query the GSI by deviceId, then filter by s3KeyRaw
     // This works because DeviceTimeIndex has projection_type = ALL
@@ -41,7 +41,8 @@ async function findRecordingWithRetry(deviceId: string, s3Key: string, maxRetrie
     }
 
     if (attempt < maxRetries) {
-      const delayMs = Math.pow(2, attempt) * 100; // 200ms, 400ms, 800ms
+      // Exponential backoff: 500ms, 1s, 2s, 4s (total ~7.5s wait)
+      const delayMs = Math.pow(2, attempt - 1) * 500;
       console.log(`Record not found, retrying in ${delayMs}ms (attempt ${attempt}/${maxRetries})`);
       await sleep(delayMs);
     }

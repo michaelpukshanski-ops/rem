@@ -166,7 +166,7 @@ variable "ecs_min_tasks" {
 variable "ecs_max_tasks" {
   description = "Maximum number of ECS tasks"
   type        = number
-  default     = 3
+  default     = 1
 }
 
 variable "ecs_target_queue_messages" {
