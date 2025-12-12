@@ -346,7 +346,7 @@ resource "aws_ecs_service" "worker" {
   name            = "${var.project_name}-transcription-worker-${var.environment}"
   cluster         = aws_ecs_cluster.transcription.id
   task_definition = aws_ecs_task_definition.worker.arn
-  desired_count   = var.enable_ecs_worker ? 1 : 0
+  desired_count   = var.enable_ecs_worker ? var.ecs_min_tasks : 0
 
   # Use Fargate Spot for 70% cost savings
   capacity_provider_strategy {
@@ -359,6 +359,11 @@ resource "aws_ecs_service" "worker" {
     subnets          = local.ecs_subnets
     security_groups  = [aws_security_group.ecs_worker.id]
     assign_public_ip = true
+  }
+
+  # Allow auto-scaling to manage desired_count
+  lifecycle {
+    ignore_changes = [desired_count]
   }
 
   tags = {
