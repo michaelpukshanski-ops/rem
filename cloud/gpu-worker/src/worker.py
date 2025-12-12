@@ -390,7 +390,8 @@ def update_dynamodb_record(
         # Add optional fields
         if embedding:
             update_parts.append('embedding = :embedding')
-            attr_values[':embedding'] = embedding
+            # Convert floats to Decimal for DynamoDB compatibility
+            attr_values[':embedding'] = [Decimal(str(f)) for f in embedding]
 
         if summary:
             update_parts.append('summary = :summary')
