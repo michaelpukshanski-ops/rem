@@ -80,14 +80,16 @@ async function parseMultipartFormData(
   });
 }
 
-function generateS3Key(deviceId: string, startedAt: string, endedAt: string): string {
+function generateS3Key(deviceId: string, startedAt: string, endedAt: string, mimeType: string): string {
   const date = new Date(startedAt);
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
   const day = String(date.getUTCDate()).padStart(2, '0');
   const startTs = startedAt.replace(/[:.]/g, '-');
   const endTs = endedAt.replace(/[:.]/g, '-');
-  return `raw/${deviceId}/${year}/${month}/${day}/${deviceId}_${startTs}_${endTs}.wav`;
+  // Determine file extension based on mime type
+  const ext = mimeType.includes('mpeg') || mimeType.includes('mp3') ? 'mp3' : 'wav';
+  return `raw/${deviceId}/${year}/${month}/${day}/${deviceId}_${startTs}_${endTs}.${ext}`;
 }
 
 function validateApiKey(event: APIGatewayProxyEventV2): boolean {
@@ -127,7 +129,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     }
     
     const recordingId = uuidv4();
-    const s3Key = generateS3Key(fields.deviceId, fields.startedAt, fields.endedAt);
+    const s3Key = generateS3Key(fields.deviceId, fields.startedAt, fields.endedAt, file.mimeType);
     
     console.log(`Uploading to S3: ${s3Key}`);
     

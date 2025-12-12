@@ -436,9 +436,12 @@ def process_message(message: Dict[str, Any]) -> bool:
         
         logger.info(f"Processing recording: {recording_id}")
         logger.info(f"Device: {device_id}, Time: {started_at}")
-        
+
+        # Determine file extension from S3 key
+        file_ext = '.mp3' if key.endswith('.mp3') else '.wav'
+
         # Create temporary file for audio
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
+        with tempfile.NamedTemporaryFile(suffix=file_ext, delete=False) as tmp_file:
             tmp_path = tmp_file.name
         
         try:

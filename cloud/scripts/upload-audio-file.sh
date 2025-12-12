@@ -113,22 +113,22 @@ echo "========================================="
 echo "Step 1: Converting and splitting audio"
 echo "========================================="
 
-# Split audio into chunks
+# Split audio into chunks (MP3 format for smaller size)
 for ((i=0; i<NUM_CHUNKS; i++)); do
     START_SEC=$((i * CHUNK_DURATION_SEC))
-    CHUNK_FILE="${TEMP_DIR}/chunk_${i}.wav"
-    
+    CHUNK_FILE="${TEMP_DIR}/chunk_${i}.mp3"
+
     echo -n "Creating chunk $((i+1))/${NUM_CHUNKS} (${START_SEC}s - $((START_SEC + CHUNK_DURATION_SEC))s)... "
-    
+
     ffmpeg -y -i "$AUDIO_FILE" \
         -ss $START_SEC \
         -t $CHUNK_DURATION_SEC \
         -ar $SAMPLE_RATE \
         -ac $CHANNELS \
-        -sample_fmt s16 \
+        -b:a 64k \
         "$CHUNK_FILE" \
         -loglevel error
-    
+
     echo -e "${GREEN}OK${NC} ($(du -h "$CHUNK_FILE" | cut -f1))"
 done
 
@@ -141,7 +141,7 @@ UPLOADED=0
 FAILED=0
 
 for ((i=0; i<NUM_CHUNKS; i++)); do
-    CHUNK_FILE="${TEMP_DIR}/chunk_${i}.wav"
+    CHUNK_FILE="${TEMP_DIR}/chunk_${i}.mp3"
     START_SEC=$((i * CHUNK_DURATION_SEC))
     END_SEC=$((START_SEC + CHUNK_DURATION_SEC))
     
@@ -166,7 +166,7 @@ for ((i=0; i<NUM_CHUNKS; i++)); do
         -F "deviceId=$DEVICE_ID" \
         -F "startedAt=$STARTED_AT" \
         -F "endedAt=$ENDED_AT" \
-        -F "file=@$CHUNK_FILE;type=audio/wav")
+        -F "file=@$CHUNK_FILE;type=audio/mpeg")
     
     HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
     BODY=$(echo "$RESPONSE" | sed '$d')
