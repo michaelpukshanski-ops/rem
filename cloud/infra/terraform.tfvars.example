@@ -40,6 +40,23 @@ ingest_lambda_memory_mb = 1024  # Larger for file uploads
 api_throttle_rate_limit  = 50   # Requests per second
 api_throttle_burst_limit = 100  # Burst capacity
 
+# ECS Worker Configuration
+enable_ecs_worker = true  # Set to true to run the transcription worker
+
+# AI Enhancements (OpenAI)
+enable_ai_enhancements = false  # Set to true to enable embeddings, summaries, and topics
+openai_api_key         = ""     # Your OpenAI API key (only needed if enable_ai_enhancements = true)
+
+# Speaker Diarization (HuggingFace)
+huggingface_token = ""  # Your HuggingFace token (optional, for speaker diarization)
+
+# Whisper Model Configuration
+whisper_model = "base"  # Options: tiny, base, small, medium, large
+
+# ECS Auto-Scaling
+ecs_min_tasks = 0  # Minimum tasks (0 for scale-to-zero)
+ecs_max_tasks = 3  # Maximum tasks
+
 # Tags (optional)
 tags = {
   Project     = "REM"

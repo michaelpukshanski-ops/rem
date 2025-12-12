@@ -31,8 +31,14 @@ variable "api_key_value" {
   sensitive   = true
 }
 
+variable "enable_ai_enhancements" {
+  description = "Enable AI enhancements (embeddings, summaries, topics) using OpenAI API"
+  type        = bool
+  default     = false
+}
+
 variable "openai_api_key" {
-  description = "OpenAI API key for embeddings and summarization"
+  description = "OpenAI API key for embeddings and summarization (only used if enable_ai_enhancements = true)"
   type        = string
   default     = ""
   sensitive   = true

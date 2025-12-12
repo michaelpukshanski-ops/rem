@@ -300,7 +300,7 @@ resource "aws_ecs_task_definition" "worker" {
     name   = "worker"
     image  = "${aws_ecr_repository.worker.repository_url}:latest"
 
-    environment = [
+    environment = concat([
       { name = "AWS_REGION", value = var.aws_region },
       { name = "SQS_QUEUE_URL", value = aws_sqs_queue.transcription_jobs.url },
       { name = "RAW_AUDIO_BUCKET", value = aws_s3_bucket.raw_audio.id },
@@ -309,10 +309,17 @@ resource "aws_ecs_task_definition" "worker" {
       { name = "WHISPER_MODEL", value = var.whisper_model },
       { name = "WHISPER_DEVICE", value = "cpu" },
       { name = "WHISPER_COMPUTE_TYPE", value = "float32" },
-      { name = "LOG_LEVEL", value = "INFO" },
-      { name = "OPENAI_API_KEY", value = var.openai_api_key },
+      { name = "LOG_LEVEL", value = "INFO" }
+    ],
+    # Only add OpenAI API key if AI enhancements are enabled
+    var.enable_ai_enhancements ? [
+      { name = "OPENAI_API_KEY", value = var.openai_api_key }
+    ] : [],
+    # Always add HuggingFace token for speaker diarization
+    [
       { name = "HUGGINGFACE_TOKEN", value = var.huggingface_token }
     ]
+    )
     
     logConfiguration = {
       logDriver = "awslogs"
