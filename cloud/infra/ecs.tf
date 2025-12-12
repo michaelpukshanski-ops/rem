@@ -479,7 +479,7 @@ resource "aws_iam_role_policy" "ecs_task" {
 }
 
 # ============================================================================
-# Auto Scaling based on SQS Queue Depth
+# Auto Scaling based on SQS Queue Depth (Visible + In-Flight Messages)
 # ============================================================================
 
 resource "aws_appautoscaling_target" "ecs_worker" {
@@ -490,29 +490,214 @@ resource "aws_appautoscaling_target" "ecs_worker" {
   service_namespace  = "ecs"
 }
 
-resource "aws_appautoscaling_policy" "ecs_worker_scale_up" {
-  name               = "${var.project_name}-worker-scale-up"
-  policy_type        = "TargetTrackingScaling"
+# CloudWatch Metric Math: Total Backlog = Visible + NotVisible (in-flight)
+# This prevents scaling to 0 while messages are being processed
+resource "aws_cloudwatch_metric_alarm" "sqs_messages_high" {
+  alarm_name          = "${var.project_name}-sqs-backlog-high-${var.environment}"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  threshold           = var.ecs_target_queue_messages
+  alarm_description   = "Scale out when SQS has messages (visible or in-flight)"
+  treat_missing_data  = "notBreaching"
+
+  metric_query {
+    id          = "backlog"
+    expression  = "visible + notvisible"
+    label       = "Total Queue Backlog"
+    return_data = true
+  }
+
+  metric_query {
+    id = "visible"
+    metric {
+      metric_name = "ApproximateNumberOfMessagesVisible"
+      namespace   = "AWS/SQS"
+      period      = 60
+      stat        = "Maximum"
+      dimensions = {
+        QueueName = aws_sqs_queue.transcription_jobs.name
+      }
+    }
+  }
+
+  metric_query {
+    id = "notvisible"
+    metric {
+      metric_name = "ApproximateNumberOfMessagesNotVisible"
+      namespace   = "AWS/SQS"
+      period      = 60
+      stat        = "Maximum"
+      dimensions = {
+        QueueName = aws_sqs_queue.transcription_jobs.name
+      }
+    }
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "sqs_messages_low" {
+  alarm_name          = "${var.project_name}-sqs-backlog-low-${var.environment}"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 5  # 5 minutes of empty queue before scaling to 0
+  threshold           = var.ecs_target_queue_messages
+  alarm_description   = "Scale in when SQS is empty (no visible or in-flight messages)"
+  treat_missing_data  = "notBreaching"
+
+  metric_query {
+    id          = "backlog"
+    expression  = "visible + notvisible"
+    label       = "Total Queue Backlog"
+    return_data = true
+  }
+
+  metric_query {
+    id = "visible"
+    metric {
+      metric_name = "ApproximateNumberOfMessagesVisible"
+      namespace   = "AWS/SQS"
+      period      = 60
+      stat        = "Maximum"
+      dimensions = {
+        QueueName = aws_sqs_queue.transcription_jobs.name
+      }
+    }
+  }
+
+  metric_query {
+    id = "notvisible"
+    metric {
+      metric_name = "ApproximateNumberOfMessagesNotVisible"
+      namespace   = "AWS/SQS"
+      period      = 60
+      stat        = "Maximum"
+      dimensions = {
+        QueueName = aws_sqs_queue.transcription_jobs.name
+      }
+    }
+  }
+}
+
+# Step Scaling Policy: Scale OUT when backlog is high
+resource "aws_appautoscaling_policy" "ecs_worker_scale_out" {
+  name               = "${var.project_name}-worker-scale-out-${var.environment}"
+  policy_type        = "StepScaling"
   resource_id        = aws_appautoscaling_target.ecs_worker.resource_id
   scalable_dimension = aws_appautoscaling_target.ecs_worker.scalable_dimension
   service_namespace  = aws_appautoscaling_target.ecs_worker.service_namespace
 
-  target_tracking_scaling_policy_configuration {
-    target_value = var.ecs_target_queue_messages
+  step_scaling_policy_configuration {
+    adjustment_type         = "ExactCapacity"
+    cooldown                = 60
+    metric_aggregation_type = "Maximum"
 
-    customized_metric_specification {
+    step_adjustment {
+      metric_interval_lower_bound = 0
+      scaling_adjustment          = var.ecs_max_tasks
+    }
+  }
+}
+
+# Step Scaling Policy: Scale IN when backlog is low
+resource "aws_appautoscaling_policy" "ecs_worker_scale_in" {
+  name               = "${var.project_name}-worker-scale-in-${var.environment}"
+  policy_type        = "StepScaling"
+  resource_id        = aws_appautoscaling_target.ecs_worker.resource_id
+  scalable_dimension = aws_appautoscaling_target.ecs_worker.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.ecs_worker.service_namespace
+
+  step_scaling_policy_configuration {
+    adjustment_type         = "ExactCapacity"
+    cooldown                = 300  # 5 minutes before scaling to 0
+    metric_aggregation_type = "Maximum"
+
+    step_adjustment {
+      metric_interval_upper_bound = 0
+      scaling_adjustment          = 0
+    }
+  }
+}
+
+# Connect CloudWatch Alarms to Auto-Scaling Policies
+resource "aws_cloudwatch_metric_alarm" "trigger_scale_out" {
+  alarm_name          = "${var.project_name}-trigger-scale-out-${var.environment}"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  threshold           = var.ecs_target_queue_messages
+  alarm_description   = "Trigger scale-out when SQS has work"
+  alarm_actions       = [aws_appautoscaling_policy.ecs_worker_scale_out.arn]
+
+  metric_query {
+    id          = "backlog"
+    expression  = "visible + notvisible"
+    label       = "Total Queue Backlog"
+    return_data = true
+  }
+
+  metric_query {
+    id = "visible"
+    metric {
       metric_name = "ApproximateNumberOfMessagesVisible"
       namespace   = "AWS/SQS"
-      statistic   = "Average"
-
-      dimensions {
-        name  = "QueueName"
-        value = aws_sqs_queue.transcription_jobs.name
+      period      = 60
+      stat        = "Maximum"
+      dimensions = {
+        QueueName = aws_sqs_queue.transcription_jobs.name
       }
     }
+  }
 
-    scale_in_cooldown  = 300  # 5 minutes
-    scale_out_cooldown = 60   # 1 minute
+  metric_query {
+    id = "notvisible"
+    metric {
+      metric_name = "ApproximateNumberOfMessagesNotVisible"
+      namespace   = "AWS/SQS"
+      period      = 60
+      stat        = "Maximum"
+      dimensions = {
+        QueueName = aws_sqs_queue.transcription_jobs.name
+      }
+    }
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "trigger_scale_in" {
+  alarm_name          = "${var.project_name}-trigger-scale-in-${var.environment}"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 5  # 5 minutes of empty queue
+  threshold           = var.ecs_target_queue_messages
+  alarm_description   = "Trigger scale-in when SQS is empty"
+  alarm_actions       = [aws_appautoscaling_policy.ecs_worker_scale_in.arn]
+
+  metric_query {
+    id          = "backlog"
+    expression  = "visible + notvisible"
+    label       = "Total Queue Backlog"
+    return_data = true
+  }
+
+  metric_query {
+    id = "visible"
+    metric {
+      metric_name = "ApproximateNumberOfMessagesVisible"
+      namespace   = "AWS/SQS"
+      period      = 60
+      stat        = "Maximum"
+      dimensions = {
+        QueueName = aws_sqs_queue.transcription_jobs.name
+      }
+    }
+  }
+
+  metric_query {
+    id = "notvisible"
+    metric {
+      metric_name = "ApproximateNumberOfMessagesNotVisible"
+      namespace   = "AWS/SQS"
+      period      = 60
+      stat        = "Maximum"
+      dimensions = {
+        QueueName = aws_sqs_queue.transcription_jobs.name
+      }
+    }
   }
 }
 
