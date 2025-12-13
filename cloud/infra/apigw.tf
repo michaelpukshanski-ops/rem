@@ -73,6 +73,28 @@ resource "aws_lambda_permission" "apigw_query_transcripts" {
 }
 
 # ============================================================================
+# List Recordings Route (GET /recordings)
+# ============================================================================
+
+resource "aws_apigatewayv2_route" "list_recordings" {
+  api_id    = aws_apigatewayv2_api.rem.id
+  route_key = "GET /recordings"
+
+  target = "integrations/${aws_apigatewayv2_integration.query_transcripts.id}"
+}
+
+# ============================================================================
+# Get Transcript Route (GET /transcript/{recordingId})
+# ============================================================================
+
+resource "aws_apigatewayv2_route" "get_transcript" {
+  api_id    = aws_apigatewayv2_api.rem.id
+  route_key = "GET /transcript/{recordingId}"
+
+  target = "integrations/${aws_apigatewayv2_integration.query_transcripts.id}"
+}
+
+# ============================================================================
 # API Gateway Stage
 # ============================================================================
 

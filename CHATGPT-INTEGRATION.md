@@ -41,15 +41,32 @@ Copy the URL (e.g., `https://abc123.execute-api.us-east-1.amazonaws.com/query`)
 ```
 You are a personal memory assistant that helps the user recall information from their past audio recordings.
 
-When the user asks a question about their past, use the searchMemories action to find relevant transcripts.
+You have THREE tools available:
+1. listRecordings - List recent recordings with metadata (duration, topics, summary)
+2. getTranscript - Get the FULL transcript of a specific recording
+3. searchMemories - Search for specific keywords/topics across all recordings
 
-Always:
-1. Search for relevant memories using the user's question
-2. Present the findings in a conversational way
-3. Include timestamps and context when available
-4. If no memories are found, suggest rephrasing the question
+STRATEGY FOR DIFFERENT REQUESTS:
 
-The user's ID is "default-user" (use this in all API calls).
+For "summarize a meeting" or "what happened in my last recording":
+1. First call listRecordings to see recent recordings
+2. Pick the most relevant one based on duration/topics
+3. Call getTranscript with that recordingId
+4. Summarize the full transcript
+
+For "find mentions of X" or "what did I say about Y":
+1. Call searchMemories with the topic/keyword
+2. Present the matching segments with context
+
+For "what meetings did I have this week":
+1. Call listRecordings with date range
+2. Summarize the list
+
+IMPORTANT:
+- Do NOT ask for date ranges unless the user specifically mentions a time period
+- Always use userId: "default-user"
+- When summarizing, read the FULL transcript first using getTranscript
+- Be conversational and helpful
 
 Format your responses naturally, as if you're helping them remember something.
 ```
@@ -71,9 +88,9 @@ Click **Actions** → **Create new action**
 {
   "openapi": "3.0.0",
   "info": {
-    "title": "REM Memory Search API",
-    "version": "1.0.0",
-    "description": "Search through audio transcripts and recordings"
+    "title": "REM Memory API",
+    "version": "2.0.0",
+    "description": "Access audio recordings, transcripts, and search through memories"
   },
   "servers": [
     {
@@ -81,11 +98,137 @@ Click **Actions** → **Create new action**
     }
   ],
   "paths": {
+    "/recordings": {
+      "get": {
+        "operationId": "listRecordings",
+        "summary": "List recent recordings with metadata",
+        "description": "Returns a list of recordings with duration, topics, summary, and other metadata. Use this first to find recordings, then use getTranscript to read the full content.",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "default": "default-user" },
+            "description": "User ID (always use 'default-user')"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 20 },
+            "description": "Maximum number of recordings to return"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "format": "date-time" },
+            "description": "Start date filter (ISO 8601)"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "format": "date-time" },
+            "description": "End date filter (ISO 8601)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of recordings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "recordings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "recordingId": { "type": "string", "description": "Unique ID to use with getTranscript" },
+                          "startedAt": { "type": "string", "description": "When the recording started" },
+                          "durationSeconds": { "type": "number", "description": "Length of recording" },
+                          "summary": { "type": "string", "description": "Brief summary of content" },
+                          "topics": { "type": "array", "items": { "type": "string" }, "description": "Main topics discussed" },
+                          "speakers": { "type": "array", "items": { "type": "string" }, "description": "Identified speakers" },
+                          "wordCount": { "type": "integer", "description": "Number of words in transcript" }
+                        }
+                      }
+                    },
+                    "count": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transcript/{recordingId}": {
+      "get": {
+        "operationId": "getTranscript",
+        "summary": "Get full transcript for a recording",
+        "description": "Returns the complete transcript text and segments for a specific recording. Use this to read the full content of a recording for summarization or detailed analysis.",
+        "parameters": [
+          {
+            "name": "recordingId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Recording ID from listRecordings"
+          },
+          {
+            "name": "userId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "default": "default-user" },
+            "description": "User ID (always use 'default-user')"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Full transcript",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "recordingId": { "type": "string" },
+                    "startedAt": { "type": "string" },
+                    "durationSeconds": { "type": "number" },
+                    "language": { "type": "string" },
+                    "fullText": { "type": "string", "description": "Complete transcript text" },
+                    "summary": { "type": "string" },
+                    "topics": { "type": "array", "items": { "type": "string" } },
+                    "speakers": { "type": "array", "items": { "type": "string" } },
+                    "segments": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "start": { "type": "number" },
+                          "end": { "type": "number" },
+                          "text": { "type": "string" },
+                          "speaker": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/query": {
       "post": {
         "operationId": "searchMemories",
-        "summary": "Search through past audio recordings and transcripts",
-        "description": "Searches transcripts by keyword and time range to find relevant memories",
+        "summary": "Search for specific content across all recordings",
+        "description": "Searches transcripts by keyword to find specific mentions or topics. Returns matching segments with context. Use this when looking for specific keywords or topics.",
         "requestBody": {
           "required": true,
           "content": {
@@ -101,21 +244,11 @@ Click **Actions** → **Create new action**
                   },
                   "query": {
                     "type": "string",
-                    "description": "Natural language search query or keywords"
-                  },
-                  "from": {
-                    "type": "string",
-                    "format": "date-time",
-                    "description": "Start date for search range (ISO 8601 format)"
-                  },
-                  "to": {
-                    "type": "string",
-                    "format": "date-time",
-                    "description": "End date for search range (ISO 8601 format)"
+                    "description": "Keywords or topic to search for"
                   },
                   "limit": {
                     "type": "integer",
-                    "description": "Maximum number of results to return",
+                    "description": "Maximum results",
                     "default": 10
                   }
                 }
@@ -125,46 +258,27 @@ Click **Actions** → **Create new action**
         },
         "responses": {
           "200": {
-            "description": "Successful search",
+            "description": "Search results",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "success": {
-                      "type": "boolean"
-                    },
-                    "summary": {
-                      "type": "string",
-                      "description": "Human-readable summary of results"
-                    },
+                    "success": { "type": "boolean" },
+                    "summary": { "type": "string" },
                     "memories": {
                       "type": "array",
                       "items": {
                         "type": "object",
                         "properties": {
-                          "timestamp": {
-                            "type": "string",
-                            "description": "When this was recorded"
-                          },
-                          "text": {
-                            "type": "string",
-                            "description": "The transcript text with context"
-                          },
-                          "context": {
-                            "type": "string",
-                            "description": "Additional context about the recording"
-                          },
-                          "relevance": {
-                            "type": "number",
-                            "description": "Relevance score (0-1)"
-                          }
+                          "timestamp": { "type": "string" },
+                          "text": { "type": "string" },
+                          "context": { "type": "string" },
+                          "relevance": { "type": "number" }
                         }
                       }
                     },
-                    "totalMatches": {
-                      "type": "integer"
-                    }
+                    "totalMatches": { "type": "integer" }
                   }
                 }
               }
@@ -177,7 +291,10 @@ Click **Actions** → **Create new action**
 }
 ```
 
-**Replace `YOUR_API_GATEWAY_URL_HERE`** with your actual API Gateway URL (without `/query` at the end).
+**Replace `YOUR_API_GATEWAY_URL_HERE`** with your API Gateway base URL. Get it with:
+```bash
+cd cloud/infra && terraform output api_gateway_base_url
+```
 
 ### **Step 4: Test It**
 

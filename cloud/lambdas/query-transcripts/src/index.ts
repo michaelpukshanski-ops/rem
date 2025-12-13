@@ -38,6 +38,27 @@ interface QueryRequest {
   speaker?: string;  // Filter by specific speaker
 }
 
+interface ListRecordingsRequest {
+  userId: string;
+  limit?: number;
+  from?: string;
+  to?: string;
+}
+
+interface RecordingSummary {
+  recordingId: string;
+  deviceId: string;
+  startedAt: string;
+  durationSeconds: number;
+  status: string;
+  summary?: string;
+  topics?: string[];
+  speakers?: string[];
+  speakerCount?: number;
+  language?: string;
+  wordCount?: number;
+}
+
 interface TranscriptSegment {
   id: number;
   start: number;
@@ -312,8 +333,176 @@ function hybridSearch(
   );
 }
 
+/**
+ * List recordings for a user
+ */
+async function handleListRecordings(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
+  const params = event.queryStringParameters || {};
+  const userId = params.userId || 'default-user';
+  const limit = parseInt(params.limit || '20', 10);
+  const from = params.from;
+  const to = params.to;
+
+  console.log(`Listing recordings for user: ${userId}, limit: ${limit}`);
+
+  let keyConditionExpression = 'PK = :userId';
+  const expressionAttributeValues: any = {
+    ':userId': userId,
+    ':status': 'TRANSCRIBED',
+  };
+
+  if (from && to) {
+    keyConditionExpression += ' AND SK BETWEEN :from AND :to';
+    expressionAttributeValues[':from'] = from;
+    expressionAttributeValues[':to'] = to;
+  }
+
+  const queryResult = await dynamoClient.send(
+    new QueryCommand({
+      TableName: DYNAMODB_TABLE,
+      KeyConditionExpression: keyConditionExpression,
+      FilterExpression: '#status = :status',
+      ExpressionAttributeNames: {
+        '#status': 'status',
+      },
+      ExpressionAttributeValues: expressionAttributeValues,
+      ScanIndexForward: false, // Most recent first
+      Limit: limit,
+    })
+  );
+
+  const recordings: RecordingSummary[] = [];
+
+  for (const item of queryResult.Items || []) {
+    const recording: RecordingSummary = {
+      recordingId: item.recordingId,
+      deviceId: item.deviceId,
+      startedAt: item.startedAt,
+      durationSeconds: item.durationSeconds || 0,
+      status: item.status,
+    };
+
+    // If there's a transcript, get summary info from it
+    if (item.transcriptS3Key) {
+      const transcript = await getTranscriptFromS3(item.transcriptS3Key);
+      if (transcript) {
+        recording.summary = transcript.summary;
+        recording.topics = transcript.topics;
+        recording.speakers = transcript.speakers;
+        recording.speakerCount = transcript.speakerCount;
+        recording.language = transcript.language;
+        recording.wordCount = transcript.fullText?.split(/\s+/).length || 0;
+      }
+    }
+
+    recordings.push(recording);
+  }
+
+  return {
+    statusCode: 200,
+    body: JSON.stringify({
+      success: true,
+      recordings,
+      count: recordings.length,
+      message: recordings.length > 0
+        ? `Found ${recordings.length} recordings.`
+        : 'No recordings found.',
+    }),
+  };
+}
+
+/**
+ * Get full transcript for a specific recording
+ */
+async function handleGetTranscript(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
+  const params = event.queryStringParameters || {};
+  const userId = params.userId || 'default-user';
+  const recordingId = event.pathParameters?.recordingId;
+
+  if (!recordingId) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ success: false, message: 'recordingId is required' }),
+    };
+  }
+
+  console.log(`Getting transcript for recording: ${recordingId}, user: ${userId}`);
+
+  // Query DynamoDB to find the recording
+  const queryResult = await dynamoClient.send(
+    new QueryCommand({
+      TableName: DYNAMODB_TABLE,
+      KeyConditionExpression: 'PK = :userId',
+      FilterExpression: 'recordingId = :recordingId',
+      ExpressionAttributeValues: {
+        ':userId': userId,
+        ':recordingId': recordingId,
+      },
+      Limit: 1,
+    })
+  );
+
+  if (!queryResult.Items || queryResult.Items.length === 0) {
+    return {
+      statusCode: 404,
+      body: JSON.stringify({ success: false, message: 'Recording not found' }),
+    };
+  }
+
+  const item = queryResult.Items[0];
+
+  if (!item.transcriptS3Key) {
+    return {
+      statusCode: 404,
+      body: JSON.stringify({
+        success: false,
+        message: 'Transcript not available',
+        status: item.status,
+      }),
+    };
+  }
+
+  const transcript = await getTranscriptFromS3(item.transcriptS3Key);
+
+  if (!transcript) {
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ success: false, message: 'Failed to retrieve transcript' }),
+    };
+  }
+
+  return {
+    statusCode: 200,
+    body: JSON.stringify({
+      success: true,
+      recordingId: transcript.recordingId,
+      deviceId: transcript.deviceId,
+      startedAt: item.startedAt,
+      durationSeconds: transcript.durationSeconds,
+      language: transcript.language,
+      fullText: transcript.fullText,
+      summary: transcript.summary,
+      topics: transcript.topics,
+      speakers: transcript.speakers,
+      speakerCount: transcript.speakerCount,
+      segments: transcript.segments.map(s => ({
+        start: s.start,
+        end: s.end,
+        text: s.text,
+        speaker: s.speaker,
+      })),
+    }),
+  };
+}
+
+/**
+ * Main handler - routes to appropriate function based on path
+ */
 export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
-  console.log('Query transcripts request received');
+  const routeKey = event.routeKey || '';
+  const path = event.rawPath || '';
+
+  console.log(`Request: ${routeKey}, path: ${path}`);
 
   try {
     // Validate API key
@@ -325,6 +514,16 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
       };
     }
 
+    // Route based on path
+    if (routeKey === 'GET /recordings' || path === '/recordings') {
+      return await handleListRecordings(event);
+    }
+
+    if (routeKey.startsWith('GET /transcript/') || path.startsWith('/transcript/')) {
+      return await handleGetTranscript(event);
+    }
+
+    // Default: POST /query (original behavior)
     if (!event.body) {
       return {
         statusCode: 400,
@@ -333,7 +532,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
     }
 
     const request: QueryRequest = JSON.parse(event.body);
-    
+
     if (!request.userId || !request.query) {
       return {
         statusCode: 400,
@@ -343,7 +542,7 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
         }),
       };
     }
-    
+
     const limit = request.limit || 10;
     const from = request.from;
     const to = request.to;

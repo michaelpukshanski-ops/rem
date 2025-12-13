@@ -14,6 +14,21 @@ output "api_gateway_query_url" {
   value       = "${aws_apigatewayv2_api.rem.api_endpoint}/query"
 }
 
+output "api_gateway_recordings_url" {
+  description = "API Gateway list recordings endpoint URL"
+  value       = "${aws_apigatewayv2_api.rem.api_endpoint}/recordings"
+}
+
+output "api_gateway_transcript_url" {
+  description = "API Gateway get transcript endpoint URL (append /{recordingId})"
+  value       = "${aws_apigatewayv2_api.rem.api_endpoint}/transcript"
+}
+
+output "api_gateway_base_url" {
+  description = "API Gateway base URL (for ChatGPT GPT configuration)"
+  value       = aws_apigatewayv2_api.rem.api_endpoint
+}
+
 output "api_gateway_id" {
   description = "API Gateway ID"
   value       = aws_apigatewayv2_api.rem.id
