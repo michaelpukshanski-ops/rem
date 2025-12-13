@@ -38,13 +38,6 @@ interface QueryRequest {
   speaker?: string;  // Filter by specific speaker
 }
 
-interface ListRecordingsRequest {
-  userId: string;
-  limit?: number;
-  from?: string;
-  to?: string;
-}
-
 interface RecordingSummary {
   recordingId: string;
   deviceId: string;
