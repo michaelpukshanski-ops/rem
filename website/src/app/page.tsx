@@ -1,5 +1,6 @@
-import { Brain, Mic, Search, Clock, Shield, Zap, MessageSquare, Cloud } from 'lucide-react';
+import { Mic, Search, Clock, Shield, MessageSquare, Cloud } from 'lucide-react';
 import { BuyButton } from '@/components/BuyButton';
+import { SplineBrain } from '@/components/SplineBrain';
 
 export default function HomePage() {
   return (
@@ -22,11 +23,10 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Hero Image Placeholder */}
+        {/* 3D Brain Model */}
         <div className="mt-16 relative">
-          <div className="bg-gradient-to-r from-primary-100 to-accent-100 rounded-3xl p-8 md:p-16 text-center">
-            <Brain className="w-32 h-32 mx-auto text-primary-600 mb-6 animate-rotate-3d" />
-            <p className="text-gray-600 text-lg">Your memories, always accessible</p>
+          <div className="bg-gradient-to-r from-primary-100 to-accent-100 rounded-3xl overflow-hidden">
+            <SplineBrain />
           </div>
         </div>
       </section>
