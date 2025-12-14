@@ -2,6 +2,29 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes rotate3d {
+  0% {
+    transform: perspective(1000px) rotateY(0deg) rotateX(0deg);
+  }
+  25% {
+    transform: perspective(1000px) rotateY(180deg) rotateX(10deg);
+  }
+  50% {
+    transform: perspective(1000px) rotateY(360deg) rotateX(0deg);
+  }
+  75% {
+    transform: perspective(1000px) rotateY(180deg) rotateX(-10deg);
+  }
+  100% {
+    transform: perspective(1000px) rotateY(0deg) rotateX(0deg);
+  }
+}
+
+.animate-rotate-3d {
+  animation: rotate3d 10s ease-in-out infinite;
+  transform-style: preserve-3d;
+}
+
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 @layer base {
