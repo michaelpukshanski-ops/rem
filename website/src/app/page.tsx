@@ -25,7 +25,7 @@ export default function HomePage() {
         {/* Hero Image Placeholder */}
         <div className="mt-16 relative">
           <div className="bg-gradient-to-r from-primary-100 to-accent-100 rounded-3xl p-8 md:p-16 text-center">
-            <Brain className="w-32 h-32 mx-auto text-primary-600 mb-6 animate-spin-slow" />
+            <Brain className="w-32 h-32 mx-auto text-primary-600 mb-6" />
             <p className="text-gray-600 text-lg">Your memories, always accessible</p>
           </div>
         </div>
