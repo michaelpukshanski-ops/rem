@@ -6,7 +6,7 @@
 
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, QueryCommand, PutCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, QueryCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import OpenAI from 'openai';
 import { v4 as uuidv4 } from 'uuid';
@@ -78,19 +78,7 @@ async function getOrCreateUserByClerkId(clerkUserId: string, email: string): Pro
   return newUser;
 }
 
-/**
- * Get user by internal userId
- */
-async function getUserById(userId: string): Promise<User | null> {
-  const result = await dynamoClient.send(
-    new GetCommand({
-      TableName: USERS_TABLE,
-      Key: { userId },
-    })
-  );
-
-  return result.Item as User | null;
-}
+// getUserById can be added later if needed for other use cases
 
 /**
  * Validate API key from request headers
