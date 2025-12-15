@@ -1,6 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
-import { Brain, Search, Calendar, Settings } from 'lucide-react';
+import { Calendar, Settings, Mic, HelpCircle } from 'lucide-react';
+import { MemoryChat } from '@/components/MemoryChat';
 
 export default async function DashboardPage() {
   const { userId } = await auth();
@@ -17,48 +18,49 @@ export default async function DashboardPage() {
           <p className="text-gray-600 mt-2">Welcome to your REM memory center</p>
         </div>
 
-        {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
-          <QuickAction
-            icon={<Search className="w-6 h-6" />}
-            title="Search Memories"
-            description="Find any conversation"
-          />
-          <QuickAction
-            icon={<Calendar className="w-6 h-6" />}
-            title="Timeline"
-            description="Browse by date"
-          />
-          <QuickAction
-            icon={<Brain className="w-6 h-6" />}
-            title="Insights"
-            description="AI-powered summaries"
-          />
-          <QuickAction
-            icon={<Settings className="w-6 h-6" />}
-            title="Settings"
-            description="Configure your REM"
-          />
-        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Chat Interface - Main Area */}
+          <div className="lg:col-span-2">
+            <MemoryChat />
+          </div>
 
-        {/* Placeholder Content */}
-        <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-          <Brain className="w-24 h-24 mx-auto text-primary-300 mb-6" />
-          <h2 className="text-2xl font-semibold text-gray-900 mb-4">
-            Your REM Memories Will Appear Here
-          </h2>
-          <p className="text-gray-600 max-w-md mx-auto mb-8">
-            Once you set up your REM device and start recording, all your transcribed 
-            memories will be searchable from this dashboard.
-          </p>
-          <div className="bg-primary-50 rounded-xl p-6 max-w-lg mx-auto">
-            <h3 className="font-semibold text-primary-900 mb-2">Getting Started</h3>
-            <ol className="text-left text-primary-800 space-y-2">
-              <li>1. Receive your REM device</li>
-              <li>2. Connect it to your WiFi network</li>
-              <li>3. Start recording your conversations</li>
-              <li>4. Search and recall from this dashboard</li>
-            </ol>
+          {/* Sidebar */}
+          <div className="space-y-6">
+            {/* Quick Actions */}
+            <div className="bg-white rounded-2xl shadow-lg p-6">
+              <h3 className="font-semibold text-gray-900 mb-4">Quick Actions</h3>
+              <div className="space-y-3">
+                <QuickAction
+                  icon={<Calendar className="w-5 h-5" />}
+                  title="Timeline"
+                  description="Browse by date"
+                />
+                <QuickAction
+                  icon={<Mic className="w-5 h-5" />}
+                  title="Recordings"
+                  description="View all recordings"
+                />
+                <QuickAction
+                  icon={<Settings className="w-5 h-5" />}
+                  title="Settings"
+                  description="Configure your REM"
+                />
+              </div>
+            </div>
+
+            {/* Getting Started */}
+            <div className="bg-primary-50 rounded-2xl p-6">
+              <div className="flex items-center gap-2 mb-3">
+                <HelpCircle className="w-5 h-5 text-primary-600" />
+                <h3 className="font-semibold text-primary-900">Getting Started</h3>
+              </div>
+              <ol className="text-sm text-primary-800 space-y-2">
+                <li>1. Receive your REM device</li>
+                <li>2. Connect it to your WiFi</li>
+                <li>3. Start recording conversations</li>
+                <li>4. Search memories using the chat</li>
+              </ol>
+            </div>
           </div>
         </div>
       </div>
@@ -66,22 +68,24 @@ export default async function DashboardPage() {
   );
 }
 
-function QuickAction({ 
-  icon, 
-  title, 
-  description 
-}: { 
-  icon: React.ReactNode; 
-  title: string; 
+function QuickAction({
+  icon,
+  title,
+  description
+}: {
+  icon: React.ReactNode;
+  title: string;
   description: string;
 }) {
   return (
-    <div className="bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow cursor-pointer">
-      <div className="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center text-primary-600 mb-4">
+    <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer">
+      <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center text-primary-600 flex-shrink-0">
         {icon}
       </div>
-      <h3 className="font-semibold text-gray-900">{title}</h3>
-      <p className="text-sm text-gray-500">{description}</p>
+      <div>
+        <h4 className="font-medium text-gray-900">{title}</h4>
+        <p className="text-xs text-gray-500">{description}</p>
+      </div>
     </div>
   );
 }
