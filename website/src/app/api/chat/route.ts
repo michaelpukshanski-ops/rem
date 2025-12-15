@@ -1,14 +1,24 @@
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 
-// Your AWS API Gateway endpoint for query-transcripts
-const QUERY_API_URL = process.env.QUERY_API_URL || 'https://your-api-gateway.execute-api.us-east-1.amazonaws.com';
-const QUERY_API_KEY = process.env.QUERY_API_KEY || '';
+// Your AWS API Gateway endpoint
+const API_BASE_URL = process.env.QUERY_API_URL || 'https://your-api-gateway.execute-api.us-east-1.amazonaws.com';
+const API_KEY = process.env.QUERY_API_KEY || '';
 
 interface ChatRequest {
   message: string;
   from?: string;
   to?: string;
+}
+
+interface UserLookupResponse {
+  success: boolean;
+  user?: {
+    userId: string;
+    email: string;
+    createdAt: string;
+  };
+  message?: string;
 }
 
 interface QueryResponse {
@@ -22,11 +32,38 @@ interface QueryResponse {
   message?: string;
 }
 
+/**
+ * Look up or create internal userId from Clerk credentials
+ */
+async function getInternalUserId(clerkUserId: string, email: string): Promise<string | null> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/user`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': API_KEY,
+      },
+      body: JSON.stringify({ clerkUserId, email }),
+    });
+
+    if (!response.ok) {
+      console.error('User lookup failed:', response.status);
+      return null;
+    }
+
+    const data: UserLookupResponse = await response.json();
+    return data.user?.userId || null;
+  } catch (error) {
+    console.error('User lookup error:', error);
+    return null;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
-    // Get authenticated user
-    const { userId } = await auth();
-    if (!userId) {
+    // Get authenticated user from Clerk
+    const { userId: clerkUserId } = await auth();
+    if (!clerkUserId) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -34,7 +71,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user's email from Clerk
-    // This is how you connect Clerk userId to your backend userId
     const user = await currentUser();
     const userEmail = user?.emailAddresses?.[0]?.emailAddress;
 
@@ -42,6 +78,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'User email not found' },
         { status: 400 }
+      );
+    }
+
+    // Look up internal userId from Clerk credentials
+    const internalUserId = await getInternalUserId(clerkUserId, userEmail);
+
+    if (!internalUserId) {
+      return NextResponse.json(
+        { error: 'Failed to resolve user' },
+        { status: 500 }
       );
     }
 
@@ -56,21 +102,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Call your query-transcripts Lambda
-    // Use email as the userId (or you can use Clerk's userId if you configure your device that way)
+    // Call query-transcripts Lambda with internal userId
     const queryPayload = {
-      userId: userEmail, // Using email as userId - change this if you use Clerk userId in your backend
+      userId: internalUserId,
       query: message,
       limit: 10,
       ...(from && { from }),
       ...(to && { to }),
     };
 
-    const response = await fetch(`${QUERY_API_URL}/query`, {
+    const response = await fetch(`${API_BASE_URL}/query`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': QUERY_API_KEY,
+        'x-api-key': API_KEY,
       },
       body: JSON.stringify(queryPayload),
     });

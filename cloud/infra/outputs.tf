@@ -24,6 +24,11 @@ output "api_gateway_transcript_url" {
   value       = "${aws_apigatewayv2_api.rem.api_endpoint}/transcript"
 }
 
+output "api_gateway_user_url" {
+  description = "API Gateway user lookup endpoint URL"
+  value       = "${aws_apigatewayv2_api.rem.api_endpoint}/user"
+}
+
 output "api_gateway_base_url" {
   description = "API Gateway base URL (for ChatGPT GPT configuration)"
   value       = aws_apigatewayv2_api.rem.api_endpoint
@@ -80,6 +85,16 @@ output "dynamodb_table_name" {
 output "dynamodb_table_arn" {
   description = "DynamoDB table ARN"
   value       = aws_dynamodb_table.recordings.arn
+}
+
+output "users_table_name" {
+  description = "DynamoDB table name for users"
+  value       = aws_dynamodb_table.users.name
+}
+
+output "users_table_arn" {
+  description = "DynamoDB users table ARN"
+  value       = aws_dynamodb_table.users.arn
 }
 
 # ============================================================================

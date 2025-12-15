@@ -6,20 +6,91 @@
 
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, QueryCommand, PutCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import OpenAI from 'openai';
+import { v4 as uuidv4 } from 'uuid';
 
 const dynamoClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const s3Client = new S3Client({});
 
 const DYNAMODB_TABLE = process.env.DYNAMODB_TABLE!;
+const USERS_TABLE = process.env.USERS_TABLE!;
 const TRANSCRIPTS_BUCKET = process.env.TRANSCRIPTS_BUCKET!;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const API_KEY = process.env.API_KEY!;
 
 // Initialize OpenAI client if API key is available
 const openai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
+
+// ============================================================================
+// User Management Types and Functions
+// ============================================================================
+
+interface User {
+  userId: string;
+  clerkUserId: string;
+  email: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Get user by Clerk user ID, or create if doesn't exist
+ */
+async function getOrCreateUserByClerkId(clerkUserId: string, email: string): Promise<User> {
+  // First, try to find existing user by clerkUserId
+  const queryResult = await dynamoClient.send(
+    new QueryCommand({
+      TableName: USERS_TABLE,
+      IndexName: 'ClerkUserIdIndex',
+      KeyConditionExpression: 'clerkUserId = :clerkUserId',
+      ExpressionAttributeValues: {
+        ':clerkUserId': clerkUserId,
+      },
+      Limit: 1,
+    })
+  );
+
+  if (queryResult.Items && queryResult.Items.length > 0) {
+    return queryResult.Items[0] as User;
+  }
+
+  // User doesn't exist, create new one
+  const now = new Date().toISOString();
+  const newUser: User = {
+    userId: uuidv4(),
+    clerkUserId,
+    email,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await dynamoClient.send(
+    new PutCommand({
+      TableName: USERS_TABLE,
+      Item: newUser,
+      ConditionExpression: 'attribute_not_exists(userId)',
+    })
+  );
+
+  console.log(`Created new user: ${newUser.userId} for clerkUserId: ${clerkUserId}`);
+  return newUser;
+}
+
+/**
+ * Get user by internal userId
+ */
+async function getUserById(userId: string): Promise<User | null> {
+  const result = await dynamoClient.send(
+    new GetCommand({
+      TableName: USERS_TABLE,
+      Key: { userId },
+    })
+  );
+
+  return result.Item as User | null;
+}
 
 /**
  * Validate API key from request headers
@@ -489,6 +560,52 @@ async function handleGetTranscript(event: APIGatewayProxyEventV2): Promise<APIGa
 }
 
 /**
+ * Handle user lookup/creation by Clerk user ID
+ */
+async function handleUserLookup(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
+  if (!event.body) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ success: false, message: 'Request body required' }),
+    };
+  }
+
+  const { clerkUserId, email } = JSON.parse(event.body);
+
+  if (!clerkUserId || !email) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({
+        success: false,
+        message: 'clerkUserId and email are required',
+      }),
+    };
+  }
+
+  try {
+    const user = await getOrCreateUserByClerkId(clerkUserId, email);
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        success: true,
+        user: {
+          userId: user.userId,
+          email: user.email,
+          createdAt: user.createdAt,
+        },
+      }),
+    };
+  } catch (error) {
+    console.error('Error in user lookup:', error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ success: false, message: 'Failed to lookup user' }),
+    };
+  }
+}
+
+/**
  * Main handler - routes to appropriate function based on path
  */
 export async function handler(event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> {
@@ -514,6 +631,11 @@ export async function handler(event: APIGatewayProxyEventV2): Promise<APIGateway
 
     if (routeKey.startsWith('GET /transcript/') || path.startsWith('/transcript/')) {
       return await handleGetTranscript(event);
+    }
+
+    // User lookup endpoint - POST /user
+    if (routeKey === 'POST /user' || path === '/user') {
+      return await handleUserLookup(event);
     }
 
     // Default: POST /query (original behavior)

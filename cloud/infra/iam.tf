@@ -143,7 +143,7 @@ resource "aws_iam_role" "query_transcripts_lambda" {
 resource "aws_iam_role_policy" "query_transcripts_lambda" {
   name = "lambda-policy"
   role = aws_iam_role.query_transcripts_lambda.id
-  
+
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -164,6 +164,18 @@ resource "aws_iam_role_policy" "query_transcripts_lambda" {
         Resource = [
           aws_dynamodb_table.recordings.arn,
           "${aws_dynamodb_table.recordings.arn}/index/*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:Query",
+          "dynamodb:GetItem",
+          "dynamodb:PutItem"
+        ]
+        Resource = [
+          aws_dynamodb_table.users.arn,
+          "${aws_dynamodb_table.users.arn}/index/*"
         ]
       },
       {

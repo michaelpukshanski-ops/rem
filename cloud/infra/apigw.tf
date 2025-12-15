@@ -95,6 +95,17 @@ resource "aws_apigatewayv2_route" "get_transcript" {
 }
 
 # ============================================================================
+# User Lookup Route (POST /user)
+# ============================================================================
+
+resource "aws_apigatewayv2_route" "user_lookup" {
+  api_id    = aws_apigatewayv2_api.rem.id
+  route_key = "POST /user"
+
+  target = "integrations/${aws_apigatewayv2_integration.query_transcripts.id}"
+}
+
+# ============================================================================
 # API Gateway Stage
 # ============================================================================
 

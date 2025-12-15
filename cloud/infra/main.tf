@@ -72,6 +72,7 @@ locals {
     RAW_AUDIO_BUCKET         = local.raw_audio_bucket_name
     TRANSCRIPTS_BUCKET       = local.transcripts_bucket_name
     DYNAMODB_TABLE           = aws_dynamodb_table.recordings.name
+    USERS_TABLE              = aws_dynamodb_table.users.name
     SQS_QUEUE_URL            = aws_sqs_queue.transcription_jobs.url
     API_KEY                  = local.api_key
     OPENAI_API_KEY           = var.openai_api_key
