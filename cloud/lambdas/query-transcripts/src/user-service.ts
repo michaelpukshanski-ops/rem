@@ -4,7 +4,7 @@
  */
 
 import { DynamoDBDocumentClient, QueryCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import { User } from './types';
 
 /**
@@ -36,7 +36,7 @@ export async function getOrCreateUserByClerkId(
   // User doesn't exist, create new one
   const now = new Date().toISOString();
   const newUser: User = {
-    userId: uuidv4(),
+    userId: randomUUID(),
     clerkUserId,
     email,
     createdAt: now,
