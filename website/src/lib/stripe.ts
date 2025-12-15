@@ -9,7 +9,7 @@ export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   typescript: true,
 });
 
-export const PRODUCT_PRICE = 29900; // $299.00 in cents
+export const PRODUCT_PRICE = 1900; // $19.00 in cents
 export const PRODUCT_NAME = 'REM Device';
 export const PRODUCT_DESCRIPTION = 'Your personal memory companion - continuous recording, transcription, and searchable memories.';
 

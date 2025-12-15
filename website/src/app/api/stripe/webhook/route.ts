@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
+import { saveOrder, createOrderFromStripeSession } from '@/lib/orders';
 import Stripe from 'stripe';
 
 export async function POST(request: NextRequest) {
@@ -27,8 +28,7 @@ export async function POST(request: NextRequest) {
   switch (event.type) {
     case 'checkout.session.completed': {
       const session = event.data.object as Stripe.Checkout.Session;
-      
-      // Log the purchase (in production, save to database)
+
       console.log('Payment successful!', {
         sessionId: session.id,
         customerEmail: session.customer_details?.email,
@@ -37,14 +37,15 @@ export async function POST(request: NextRequest) {
         shippingAddress: session.shipping_details?.address,
       });
 
-      // TODO: In production, save to database:
-      // await db.purchases.create({
-      //   email: session.customer_details?.email,
-      //   stripeSessionId: session.id,
-      //   status: 'completed',
-      //   shippingAddress: session.shipping_details?.address,
-      //   createdAt: new Date(),
-      // });
+      // Save order to DynamoDB
+      try {
+        const order = createOrderFromStripeSession(session);
+        await saveOrder(order);
+        console.log('Order saved to database:', order.orderId);
+      } catch (dbError) {
+        console.error('Failed to save order to database:', dbError);
+        // Don't fail the webhook - Stripe will retry
+      }
 
       break;
     }

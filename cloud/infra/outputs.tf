@@ -97,6 +97,16 @@ output "users_table_arn" {
   value       = aws_dynamodb_table.users.arn
 }
 
+output "orders_table_name" {
+  description = "DynamoDB table name for orders"
+  value       = aws_dynamodb_table.orders.name
+}
+
+output "orders_table_arn" {
+  description = "DynamoDB orders table ARN"
+  value       = aws_dynamodb_table.orders.arn
+}
+
 # ============================================================================
 # SQS Outputs
 # ============================================================================

@@ -124,6 +124,60 @@ resource "aws_dynamodb_table" "users" {
   }
 }
 
+# ============================================================================
+# DynamoDB Table for Orders
+# ============================================================================
+
+resource "aws_dynamodb_table" "orders" {
+  name           = "${var.project_name}-orders-${var.environment}"
+  billing_mode   = "PROVISIONED"
+  read_capacity  = var.dynamodb_read_capacity
+  write_capacity = var.dynamodb_write_capacity
+
+  hash_key  = "orderId"  # Stripe session ID
+  range_key = "createdAt"
+
+  attribute {
+    name = "orderId"
+    type = "S"
+  }
+
+  attribute {
+    name = "createdAt"
+    type = "S"
+  }
+
+  # For looking up orders by email
+  attribute {
+    name = "email"
+    type = "S"
+  }
+
+  # GSI to query by email
+  global_secondary_index {
+    name            = "EmailIndex"
+    hash_key        = "email"
+    range_key       = "createdAt"
+    projection_type = "ALL"
+    read_capacity   = var.dynamodb_read_capacity
+    write_capacity  = var.dynamodb_write_capacity
+  }
+
+  # Enable point-in-time recovery
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  # Server-side encryption
+  server_side_encryption {
+    enabled = true
+  }
+
+  tags = {
+    Name = "REM Orders"
+  }
+}
+
 # Auto-scaling for read capacity
 resource "aws_appautoscaling_target" "dynamodb_read" {
   max_capacity       = 100
@@ -213,6 +267,56 @@ resource "aws_appautoscaling_policy" "users_write" {
   resource_id        = aws_appautoscaling_target.users_write.resource_id
   scalable_dimension = aws_appautoscaling_target.users_write.scalable_dimension
   service_namespace  = aws_appautoscaling_target.users_write.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "DynamoDBWriteCapacityUtilization"
+    }
+    target_value = 70.0
+  }
+}
+
+# ============================================================================
+# Auto-scaling for Orders table
+# ============================================================================
+
+resource "aws_appautoscaling_target" "orders_read" {
+  max_capacity       = 100
+  min_capacity       = var.dynamodb_read_capacity
+  resource_id        = "table/${aws_dynamodb_table.orders.name}"
+  scalable_dimension = "dynamodb:table:ReadCapacityUnits"
+  service_namespace  = "dynamodb"
+}
+
+resource "aws_appautoscaling_policy" "orders_read" {
+  name               = "${var.project_name}-orders-read-scaling"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.orders_read.resource_id
+  scalable_dimension = aws_appautoscaling_target.orders_read.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.orders_read.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "DynamoDBReadCapacityUtilization"
+    }
+    target_value = 70.0
+  }
+}
+
+resource "aws_appautoscaling_target" "orders_write" {
+  max_capacity       = 100
+  min_capacity       = var.dynamodb_write_capacity
+  resource_id        = "table/${aws_dynamodb_table.orders.name}"
+  scalable_dimension = "dynamodb:table:WriteCapacityUnits"
+  service_namespace  = "dynamodb"
+}
+
+resource "aws_appautoscaling_policy" "orders_write" {
+  name               = "${var.project_name}-orders-write-scaling"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.orders_write.resource_id
+  scalable_dimension = aws_appautoscaling_target.orders_write.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.orders_write.service_namespace
 
   target_tracking_scaling_policy_configuration {
     predefined_metric_specification {
