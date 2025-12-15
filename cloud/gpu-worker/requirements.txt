@@ -19,9 +19,11 @@ python-dotenv>=1.0.0
 # Logging
 colorlog>=6.8.0
 
-# Speaker diarization (DISABLED - adds 6GB to image size)
-# Uncomment these if you need speaker diarization:
-# pyannote.audio>=3.1.0
-# torch>=2.0.0
-# torchaudio>=2.0.0
+# Speaker diarization
+pyannote.audio>=3.1.0
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# For speaker embedding extraction and comparison
+scipy>=1.10.0
 

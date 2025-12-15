@@ -178,6 +178,44 @@ resource "aws_dynamodb_table" "orders" {
   }
 }
 
+# ============================================================================
+# DynamoDB Table for Speakers (Voice Profiles)
+# ============================================================================
+
+resource "aws_dynamodb_table" "speakers" {
+  name           = "${var.project_name}-speakers-${var.environment}"
+  billing_mode   = "PROVISIONED"
+  read_capacity  = var.dynamodb_read_capacity
+  write_capacity = var.dynamodb_write_capacity
+
+  hash_key  = "userId"     # Owner of the speaker profile
+  range_key = "speakerId"  # Unique speaker ID
+
+  attribute {
+    name = "userId"
+    type = "S"
+  }
+
+  attribute {
+    name = "speakerId"
+    type = "S"
+  }
+
+  # Enable point-in-time recovery
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  # Server-side encryption
+  server_side_encryption {
+    enabled = true
+  }
+
+  tags = {
+    Name = "REM Speakers"
+  }
+}
+
 # Auto-scaling for read capacity
 resource "aws_appautoscaling_target" "dynamodb_read" {
   max_capacity       = 100
@@ -317,6 +355,56 @@ resource "aws_appautoscaling_policy" "orders_write" {
   resource_id        = aws_appautoscaling_target.orders_write.resource_id
   scalable_dimension = aws_appautoscaling_target.orders_write.scalable_dimension
   service_namespace  = aws_appautoscaling_target.orders_write.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "DynamoDBWriteCapacityUtilization"
+    }
+    target_value = 70.0
+  }
+}
+
+# ============================================================================
+# Auto-scaling for Speakers table
+# ============================================================================
+
+resource "aws_appautoscaling_target" "speakers_read" {
+  max_capacity       = 100
+  min_capacity       = var.dynamodb_read_capacity
+  resource_id        = "table/${aws_dynamodb_table.speakers.name}"
+  scalable_dimension = "dynamodb:table:ReadCapacityUnits"
+  service_namespace  = "dynamodb"
+}
+
+resource "aws_appautoscaling_policy" "speakers_read" {
+  name               = "${var.project_name}-speakers-read-scaling"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.speakers_read.resource_id
+  scalable_dimension = aws_appautoscaling_target.speakers_read.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.speakers_read.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "DynamoDBReadCapacityUtilization"
+    }
+    target_value = 70.0
+  }
+}
+
+resource "aws_appautoscaling_target" "speakers_write" {
+  max_capacity       = 100
+  min_capacity       = var.dynamodb_write_capacity
+  resource_id        = "table/${aws_dynamodb_table.speakers.name}"
+  scalable_dimension = "dynamodb:table:WriteCapacityUnits"
+  service_namespace  = "dynamodb"
+}
+
+resource "aws_appautoscaling_policy" "speakers_write" {
+  name               = "${var.project_name}-speakers-write-scaling"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.speakers_write.resource_id
+  scalable_dimension = aws_appautoscaling_target.speakers_write.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.speakers_write.service_namespace
 
   target_tracking_scaling_policy_configuration {
     predefined_metric_specification {

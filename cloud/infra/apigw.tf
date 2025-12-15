@@ -6,8 +6,8 @@ resource "aws_apigatewayv2_api" "rem" {
   
   cors_configuration {
     allow_origins = ["*"]  # Restrict in production
-    allow_methods = ["POST", "GET", "OPTIONS"]
-    allow_headers = ["content-type", "x-api-key"]
+    allow_methods = ["POST", "GET", "PUT", "DELETE", "OPTIONS"]
+    allow_headers = ["content-type", "x-api-key", "x-clerk-user-id", "authorization"]
     max_age       = 300
   }
   
@@ -103,6 +103,75 @@ resource "aws_apigatewayv2_route" "user_lookup" {
   route_key = "POST /user"
 
   target = "integrations/${aws_apigatewayv2_integration.query_transcripts.id}"
+}
+
+# ============================================================================
+# Speakers API Routes
+# ============================================================================
+
+resource "aws_apigatewayv2_integration" "speakers_api" {
+  api_id           = aws_apigatewayv2_api.rem.id
+  integration_type = "AWS_PROXY"
+
+  integration_uri    = aws_lambda_function.speakers_api.invoke_arn
+  integration_method = "POST"
+  payload_format_version = "2.0"
+}
+
+# GET /speakers - List all speakers
+resource "aws_apigatewayv2_route" "list_speakers" {
+  api_id    = aws_apigatewayv2_api.rem.id
+  route_key = "GET /speakers"
+
+  target = "integrations/${aws_apigatewayv2_integration.speakers_api.id}"
+}
+
+# GET /speakers/{speakerId} - Get specific speaker
+resource "aws_apigatewayv2_route" "get_speaker" {
+  api_id    = aws_apigatewayv2_api.rem.id
+  route_key = "GET /speakers/{speakerId}"
+
+  target = "integrations/${aws_apigatewayv2_integration.speakers_api.id}"
+}
+
+# PUT /speakers/{speakerId} - Update speaker (rename)
+resource "aws_apigatewayv2_route" "update_speaker" {
+  api_id    = aws_apigatewayv2_api.rem.id
+  route_key = "PUT /speakers/{speakerId}"
+
+  target = "integrations/${aws_apigatewayv2_integration.speakers_api.id}"
+}
+
+# DELETE /speakers/{speakerId} - Delete speaker
+resource "aws_apigatewayv2_route" "delete_speaker" {
+  api_id    = aws_apigatewayv2_api.rem.id
+  route_key = "DELETE /speakers/{speakerId}"
+
+  target = "integrations/${aws_apigatewayv2_integration.speakers_api.id}"
+}
+
+# OPTIONS /speakers - CORS preflight
+resource "aws_apigatewayv2_route" "speakers_options" {
+  api_id    = aws_apigatewayv2_api.rem.id
+  route_key = "OPTIONS /speakers"
+
+  target = "integrations/${aws_apigatewayv2_integration.speakers_api.id}"
+}
+
+# OPTIONS /speakers/{speakerId} - CORS preflight
+resource "aws_apigatewayv2_route" "speaker_options" {
+  api_id    = aws_apigatewayv2_api.rem.id
+  route_key = "OPTIONS /speakers/{speakerId}"
+
+  target = "integrations/${aws_apigatewayv2_integration.speakers_api.id}"
+}
+
+resource "aws_lambda_permission" "apigw_speakers_api" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.speakers_api.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.rem.execution_arn}/*/*"
 }
 
 # ============================================================================

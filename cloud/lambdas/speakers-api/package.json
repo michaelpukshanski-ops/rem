@@ -1,0 +1,25 @@
+{
+  "name": "rem-speakers-api",
+  "version": "1.0.0",
+  "description": "REM Lambda to manage speaker profiles",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc && npm run package",
+    "package": "mkdir -p dist && cp -r node_modules dist/ && cd dist && zip -r function.zip . && cd ..",
+    "clean": "rm -rf dist",
+    "rebuild": "npm run clean && npm run build",
+    "dev": "ts-node local-test.ts",
+    "debug": "node --inspect-brk -r ts-node/register local-test.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.450.0",
+    "@aws-sdk/lib-dynamodb": "^3.450.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.130",
+    "@types/node": "^20.10.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.2"
+  }
+}
+

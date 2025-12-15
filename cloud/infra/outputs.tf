@@ -107,6 +107,16 @@ output "orders_table_arn" {
   value       = aws_dynamodb_table.orders.arn
 }
 
+output "speakers_table_name" {
+  description = "DynamoDB table name for speakers (voice profiles)"
+  value       = aws_dynamodb_table.speakers.name
+}
+
+output "speakers_table_arn" {
+  description = "DynamoDB speakers table ARN"
+  value       = aws_dynamodb_table.speakers.arn
+}
+
 # ============================================================================
 # SQS Outputs
 # ============================================================================
@@ -167,6 +177,7 @@ output "gpu_worker_configuration" {
     RAW_AUDIO_BUCKET   = aws_s3_bucket.raw_audio.id
     TRANSCRIPTS_BUCKET = aws_s3_bucket.transcripts.id
     DYNAMODB_TABLE     = aws_dynamodb_table.recordings.name
+    SPEAKERS_TABLE     = aws_dynamodb_table.speakers.name
   }
 }
 

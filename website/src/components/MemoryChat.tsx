@@ -7,6 +7,7 @@ interface MemoryResult {
   text: string;
   timestamp: string;
   speaker?: string;
+  speakerName?: string;
   recordingId: string;
 }
 
@@ -125,7 +126,9 @@ export function MemoryChat() {
                       <p className="text-gray-800">&quot;{result.text}&quot;</p>
                       <div className="flex gap-2 mt-2 text-xs text-gray-500">
                         <span>{new Date(result.timestamp).toLocaleDateString()}</span>
-                        {result.speaker && <span>• {result.speaker}</span>}
+                        {(result.speakerName || result.speaker) && (
+                          <span>• {result.speakerName || result.speaker}</span>
+                        )}
                       </div>
                     </div>
                   ))}

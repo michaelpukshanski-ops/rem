@@ -192,6 +192,70 @@ resource "aws_iam_role_policy" "query_transcripts_lambda" {
 }
 
 # ============================================================================
+# Speakers API Lambda Role
+# ============================================================================
+
+resource "aws_iam_role" "speakers_api_lambda" {
+  name = "${var.project_name}-speakers-api-lambda-${var.environment}"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "speakers_api_lambda" {
+  name = "lambda-policy"
+  role = aws_iam_role.speakers_api_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:Query",
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem"
+        ]
+        Resource = [
+          aws_dynamodb_table.speakers.arn,
+          "${aws_dynamodb_table.speakers.arn}/index/*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:Query",
+          "dynamodb:GetItem"
+        ]
+        Resource = [
+          aws_dynamodb_table.users.arn,
+          "${aws_dynamodb_table.users.arn}/index/*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:*:*:*"
+      }
+    ]
+  })
+}
+
+# ============================================================================
 # NOTE: Transcription Worker uses ECS with EC2 Spot (see ecs.tf)
 # Lambda migration was abandoned in favor of EC2 Spot for better performance
 # ============================================================================

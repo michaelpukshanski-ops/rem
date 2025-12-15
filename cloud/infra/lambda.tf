@@ -94,6 +94,36 @@ resource "aws_cloudwatch_log_group" "query_transcripts" {
 }
 
 # ============================================================================
+# Speakers API Lambda
+# ============================================================================
+
+resource "aws_lambda_function" "speakers_api" {
+  filename         = "${path.module}/../lambdas/speakers-api/dist/function.zip"
+  function_name    = "${var.project_name}-speakers-api-${var.environment}"
+  role            = aws_iam_role.speakers_api_lambda.arn
+  handler         = "index.handler"
+  source_code_hash = fileexists("${path.module}/../lambdas/speakers-api/dist/function.zip") ? filebase64sha256("${path.module}/../lambdas/speakers-api/dist/function.zip") : null
+  runtime         = var.lambda_runtime
+  timeout         = var.lambda_timeout
+  memory_size     = var.lambda_memory_size
+
+  environment {
+    variables = merge(local.common_lambda_environment, {
+      SPEAKERS_TABLE = aws_dynamodb_table.speakers.name
+    })
+  }
+
+  tags = {
+    Name = "REM Speakers API"
+  }
+}
+
+resource "aws_cloudwatch_log_group" "speakers_api" {
+  name              = "/aws/lambda/${aws_lambda_function.speakers_api.function_name}"
+  retention_in_days = 14
+}
+
+# ============================================================================
 # NOTE: Transcription Worker uses ECS with EC2 Spot (see ecs.tf)
 # Lambda migration was abandoned in favor of EC2 Spot for better performance
 # ============================================================================

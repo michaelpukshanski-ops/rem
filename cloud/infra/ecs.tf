@@ -306,6 +306,7 @@ resource "aws_ecs_task_definition" "worker" {
       { name = "RAW_AUDIO_BUCKET", value = aws_s3_bucket.raw_audio.id },
       { name = "TRANSCRIPTS_BUCKET", value = aws_s3_bucket.transcripts.id },
       { name = "DYNAMODB_TABLE", value = aws_dynamodb_table.recordings.name },
+      { name = "SPEAKERS_TABLE", value = aws_dynamodb_table.speakers.name },
       { name = "WHISPER_MODEL", value = var.whisper_model },
       { name = "WHISPER_DEVICE", value = "cpu" },
       { name = "WHISPER_COMPUTE_TYPE", value = "float32" },
@@ -473,6 +474,16 @@ resource "aws_iam_role_policy" "ecs_task" {
           "dynamodb:GetItem"
         ]
         Resource = aws_dynamodb_table.recordings.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:Query",
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem"
+        ]
+        Resource = aws_dynamodb_table.speakers.arn
       }
     ]
   })

@@ -23,6 +23,8 @@ from faster_whisper import WhisperModel
 from dotenv import load_dotenv
 from openai import OpenAI
 
+from speaker_service import identify_speakers_in_recording
+
 # Load environment variables
 load_dotenv()
 
@@ -466,6 +468,21 @@ def process_message(message: Dict[str, Any]) -> bool:
                 speaker_segments
             )
 
+            # Identify speakers against known profiles and update profiles
+            speaker_mapping = {}
+            if speaker_segments:
+                logger.info("Identifying speakers against known profiles...")
+                try:
+                    segments_with_speakers, speaker_mapping = identify_speakers_in_recording(
+                        tmp_path,
+                        user_id,
+                        speaker_segments,
+                        segments_with_speakers
+                    )
+                    logger.info(f"Speaker mapping: {speaker_mapping}")
+                except Exception as e:
+                    logger.warning(f"Speaker identification failed: {e}")
+
             # Generate AI enhancements (embeddings, summary, topics)
             logger.info("Generating AI enhancements...")
             embedding = generate_embedding(full_text)
@@ -502,9 +519,13 @@ def process_message(message: Dict[str, Any]) -> bool:
             if topics:
                 transcript_data['topics'] = topics
             if speaker_segments:
-                # Count unique speakers
-                unique_speakers = list(set(seg['speaker'] for seg in segments_with_embeddings if 'speaker' in seg))
-                transcript_data['speakers'] = unique_speakers
+                # Get unique speakers with their names
+                unique_speakers = {}
+                for seg in segments_with_embeddings:
+                    if 'speakerId' in seg:
+                        unique_speakers[seg['speakerId']] = seg.get('speakerName', seg['speakerId'])
+                transcript_data['speakers'] = list(unique_speakers.keys())
+                transcript_data['speakerNames'] = unique_speakers
                 transcript_data['speakerCount'] = len(unique_speakers)
 
             # Generate S3 key for transcript
