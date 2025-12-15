@@ -343,11 +343,13 @@ export async function handleQuery(
     ? `Found ${chatGPTMemories.length} relevant memories from your past recordings.`
     : 'No relevant memories found for this query.';
 
+  // Return both 'results' (for website) and 'memories' (for ChatGPT plugin)
   return {
     statusCode: 200,
     body: JSON.stringify({
       success: true,
       summary,
+      results: chatGPTMemories,  // For website compatibility
       memories: chatGPTMemories,
       rawResults: limitedResults,
       totalMatches: allResults.length,
