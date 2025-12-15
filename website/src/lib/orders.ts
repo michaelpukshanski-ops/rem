@@ -77,7 +77,7 @@ export function createOrderFromStripeSession(
     customer_details?: {
       email?: string | null;
       name?: string | null;
-    };
+    } | null;
     amount_total?: number | null;
     currency?: string | null;
     payment_status?: string | null;
