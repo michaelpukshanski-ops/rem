@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@clerk/nextjs';
-import { Users, Edit2, Trash2, Save, X, Loader2 } from 'lucide-react';
+import Link from 'next/link';
+import { Users, Edit2, Trash2, Save, X, Loader2, ArrowLeft } from 'lucide-react';
 
 interface Speaker {
   speakerId: string;
@@ -115,6 +116,13 @@ export default function SpeakersPage() {
     <div className="min-h-[80vh] gradient-bg py-12">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-8">
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Dashboard
+          </Link>
           <div className="flex items-center gap-3">
             <Users className="w-8 h-8 text-primary-600" />
             <h1 className="text-3xl font-bold text-gray-900">Speaker Profiles</h1>
