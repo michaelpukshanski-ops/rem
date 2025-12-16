@@ -15,7 +15,7 @@ export default function SuccessPage() {
           </h1>
           
           <p className="text-gray-600 mb-8">
-            Your REM device is on its way. You'll receive a confirmation email shortly 
+            Your order is on its way. You'll receive a confirmation email shortly
             with tracking information.
           </p>
 

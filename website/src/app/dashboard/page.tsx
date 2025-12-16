@@ -16,7 +16,7 @@ export default async function DashboardPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Your Dashboard</h1>
-          <p className="text-gray-600 mt-2">Welcome to your REM memory center</p>
+          <p className="text-gray-600 mt-2">Your life, remembered for you</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -63,7 +63,7 @@ export default async function DashboardPage() {
                 <h3 className="font-semibold text-primary-900">Getting Started</h3>
               </div>
               <ol className="text-sm text-primary-800 space-y-2">
-                <li>1. Receive your REM device</li>
+                <li>1. Receive your device</li>
                 <li>2. Connect it to your WiFi</li>
                 <li>3. Start recording conversations</li>
                 <li>4. Search memories using the chat</li>

@@ -13,7 +13,7 @@ export function Footer() {
               <span className="text-xl font-bold text-white">REM</span>
             </Link>
             <p className="text-gray-400 max-w-md">
-              Recording Everything Memory. Your personal AI companion that captures, 
+              Your life, remembered for you. A personal AI companion that captures,
               transcribes, and makes your life searchable.
             </p>
           </div>
