@@ -94,7 +94,7 @@ void finishCurrentChunk(bool discard);
 #endif
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   delay(1000);
   DEBUG_PRINTLN("\n=== REM ESP32 Firmware v1.0 ===\n");
 
@@ -105,12 +105,17 @@ void setup() {
   DEBUG_PRINTF("Device ID: %s\n", deviceId.c_str());
 
   setupStorage();
-  setupWiFi();
-  setupTime();
+
+  // Setup I2S and mic FIRST so we can test without WiFi blocking
   setupI2S();
 #if VAD_ENABLED
   setupVAD();
 #endif
+
+  // Skip WiFi for now - just test mic
+  DEBUG_PRINTLN("Skipping WiFi for mic testing...");
+  // setupWiFi();
+  // setupTime();
 
   recording.isRecording = false;
   recording.hasSpeech = false;
