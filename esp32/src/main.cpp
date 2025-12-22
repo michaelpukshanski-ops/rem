@@ -237,24 +237,27 @@ void setupI2S() {
 void setupWiFi() {
   WiFi.mode(WIFI_STA);
 
-  // Configure WiFiManager
-  wifiManager.setConfigPortalTimeout(CONFIG_PORTAL_TIMEOUT);
-  wifiManager.setAPCallback([](WiFiManager *mgr) {
-    DEBUG_PRINTLN("\n=== WiFi Config Mode ===");
-    DEBUG_PRINTF("Connect to: %s\n", CONFIG_AP_NAME);
-    DEBUG_PRINTF("Password: %s\n", CONFIG_AP_PASSWORD);
-    DEBUG_PRINTLN("Open browser to: 192.168.4.1");
-    DEBUG_PRINTLN("========================\n");
-  });
+  // Hardcoded WiFi for testing - connect directly
+  #define TEST_WIFI_SSID "No More Mr WiFi"
+  #define TEST_WIFI_PASS "203203609"
 
-  // Try to auto-connect with saved credentials
   DEBUG_PRINTLN("Connecting to WiFi...");
-  if (!wifiManager.autoConnect(CONFIG_AP_NAME, CONFIG_AP_PASSWORD)) {
-    DEBUG_PRINTLN("Failed to connect, will retry later");
-    // Don't block - continue with recording even without WiFi
-  } else {
-    DEBUG_PRINTLN("WiFi connected!");
+  DEBUG_PRINTF("SSID: %s\n", TEST_WIFI_SSID);
+
+  WiFi.begin(TEST_WIFI_SSID, TEST_WIFI_PASS);
+
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+    delay(500);
+    DEBUG_PRINT(".");
+    attempts++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    DEBUG_PRINTLN("\nWiFi connected!");
     DEBUG_PRINTF("IP: %s\n", WiFi.localIP().toString().c_str());
+  } else {
+    DEBUG_PRINTLN("\nFailed to connect, will retry later");
   }
 }
 
