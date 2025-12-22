@@ -261,11 +261,11 @@ void writeWavHeader(File &f, uint32_t sr, uint16_t bps, uint16_t ch) {
   uint32_t br = sr * ch * bps / 8;
   uint16_t ba = ch * bps / 8;
   uint32_t ds = 0xFFFFFFFF - 44;
-  f.write("RIFF", 4);
+  f.write((const uint8_t*)"RIFF", 4);
   uint32_t cs = ds + 36;
   f.write((uint8_t*)&cs, 4);
-  f.write("WAVE", 4);
-  f.write("fmt ", 4);
+  f.write((const uint8_t*)"WAVE", 4);
+  f.write((const uint8_t*)"fmt ", 4);
   uint32_t fs = 16;
   f.write((uint8_t*)&fs, 4);
   uint16_t af = 1;
@@ -275,7 +275,7 @@ void writeWavHeader(File &f, uint32_t sr, uint16_t bps, uint16_t ch) {
   f.write((uint8_t*)&br, 4);
   f.write((uint8_t*)&ba, 2);
   f.write((uint8_t*)&bps, 2);
-  f.write("data", 4);
+  f.write((const uint8_t*)"data", 4);
   f.write((uint8_t*)&ds, 4);
 }
 
