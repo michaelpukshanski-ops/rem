@@ -129,14 +129,34 @@ void setup() {
 }
 
 void loop() {
+  static unsigned long lastStatusLog = 0;
+
   checkConfigButton();
   audioRecordingTask();
   uploadTask();
+
+  // Log status every 5 seconds so user knows it's working
+  if (millis() - lastStatusLog >= 5000) {
+    lastStatusLog = millis();
+#if VAD_ENABLED
+    if (!vadState.isCapturing) {
+      DEBUG_PRINTF("[Status] Listening... RMS=%d (threshold=%d)\n", vadState.currentRMS, VAD_THRESHOLD);
+    } else {
+      DEBUG_PRINTF("[Status] Recording... RMS=%d, bytes=%d\n", vadState.currentRMS, recording.bytesWritten);
+    }
+#else
+    DEBUG_PRINTF("[Status] Recording... bytes=%d\n", recording.bytesWritten);
+#endif
+  }
+
   delay(1);
 }
 
 void setupI2S() {
   DEBUG_PRINTLN("Init I2S...");
+  DEBUG_PRINTF("  Pins: SCK=%d, WS=%d, SD=%d\n", I2S_SCK, I2S_WS, I2S_SD);
+  DEBUG_PRINTF("  Sample rate: %d Hz, Bits: %d, Channels: %d\n", SAMPLE_RATE, BITS_PER_SAMPLE, CHANNELS);
+
   i2s_config_t cfg = {
     .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
     .sample_rate = SAMPLE_RATE,
@@ -156,9 +176,62 @@ void setupI2S() {
     .data_out_num = I2S_PIN_NO_CHANGE,
     .data_in_num = I2S_SD
   };
-  i2s_driver_install(I2S_PORT, &cfg, 0, NULL);
-  i2s_set_pin(I2S_PORT, &pins);
+
+  esp_err_t err = i2s_driver_install(I2S_PORT, &cfg, 0, NULL);
+  if (err != ESP_OK) {
+    DEBUG_PRINTF("I2S driver install FAILED: %d\n", err);
+    return;
+  }
+
+  err = i2s_set_pin(I2S_PORT, &pins);
+  if (err != ESP_OK) {
+    DEBUG_PRINTF("I2S set pin FAILED: %d\n", err);
+    return;
+  }
+
   DEBUG_PRINTLN("I2S OK");
+
+  // Test microphone - read a few samples and check if we get data
+  DEBUG_PRINTLN("Testing microphone...");
+  delay(100);  // Let I2S stabilize
+
+  uint8_t testBuf[1024];
+  size_t bytesRead = 0;
+  err = i2s_read(I2S_PORT, testBuf, sizeof(testBuf), &bytesRead, 1000);
+
+  if (err != ESP_OK) {
+    DEBUG_PRINTF("Mic read FAILED: %d\n", err);
+    return;
+  }
+
+  if (bytesRead == 0) {
+    DEBUG_PRINTLN("WARNING: Mic returned 0 bytes - check wiring!");
+    return;
+  }
+
+  // Calculate RMS of test samples
+  int16_t* samples = (int16_t*)testBuf;
+  int numSamples = bytesRead / 2;
+  int64_t sum = 0;
+  int16_t minVal = 32767, maxVal = -32768;
+
+  for (int i = 0; i < numSamples; i++) {
+    int16_t s = samples[i];
+    sum += (int64_t)s * s;
+    if (s < minVal) minVal = s;
+    if (s > maxVal) maxVal = s;
+  }
+
+  uint16_t rms = sqrt(sum / numSamples);
+  DEBUG_PRINTF("Mic test: %d bytes, RMS=%d, min=%d, max=%d\n", bytesRead, rms, minVal, maxVal);
+
+  if (rms == 0 && minVal == 0 && maxVal == 0) {
+    DEBUG_PRINTLN("WARNING: Mic returning all zeros - check connections!");
+  } else if (rms < 10) {
+    DEBUG_PRINTLN("Mic OK (quiet environment)");
+  } else {
+    DEBUG_PRINTLN("Mic OK (detecting sound)");
+  }
 }
 
 void setupWiFi() {
@@ -186,8 +259,26 @@ void setupWiFi() {
 }
 
 void checkConfigButton() {
+  static unsigned long lastDebounceTime = 0;
+  static bool lastButtonState = HIGH;
+  const unsigned long debounceDelay = 50;  // 50ms debounce
+
+  bool currentState = digitalRead(CONFIG_BUTTON_PIN);
+
+  // If state changed, reset debounce timer
+  if (currentState != lastButtonState) {
+    lastDebounceTime = millis();
+    lastButtonState = currentState;
+    return;  // Wait for debounce
+  }
+
+  // Only act if state has been stable for debounceDelay
+  if (millis() - lastDebounceTime < debounceDelay) {
+    return;
+  }
+
   // Check if config button is pressed (active LOW)
-  if (digitalRead(CONFIG_BUTTON_PIN) == LOW) {
+  if (currentState == LOW) {
     if (!configButtonPressed) {
       configButtonPressed = true;
       configButtonPressTime = millis();
