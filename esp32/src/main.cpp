@@ -94,7 +94,7 @@ void finishCurrentChunk(bool discard);
 #endif
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   delay(1000);
   DEBUG_PRINTLN("\n=== REM ESP32 Firmware v1.0 ===\n");
 
