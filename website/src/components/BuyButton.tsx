@@ -1,12 +1,22 @@
 'use client';
 
 import { useState } from 'react';
+import { useAuth } from '@clerk/nextjs';
+import { useRouter } from 'next/navigation';
 import { ShoppingCart, Loader2 } from 'lucide-react';
 
 export function BuyButton() {
   const [loading, setLoading] = useState(false);
+  const { isSignedIn } = useAuth();
+  const router = useRouter();
 
   const handleCheckout = async () => {
+    // Redirect to login if not signed in
+    if (!isSignedIn) {
+      router.push('/login');
+      return;
+    }
+
     setLoading(true);
     try {
       const response = await fetch('/api/checkout', {
