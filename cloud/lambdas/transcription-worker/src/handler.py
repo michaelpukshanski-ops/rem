@@ -13,6 +13,7 @@ from decimal import Decimal
 from typing import Dict, List, Optional, Any
 
 import boto3
+import torch
 from botocore.exceptions import ClientError
 
 # Configure logging
@@ -31,6 +32,10 @@ WHISPER_MODEL = os.getenv('WHISPER_MODEL', 'base')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 HUGGINGFACE_TOKEN = os.getenv('HUGGINGFACE_TOKEN')
 
+# Determine device (CUDA for NVIDIA, MPS for Mac, CPU otherwise)
+DEVICE = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+logger.info(f"Using device: {DEVICE}")
+
 # Lazy-loaded heavy dependencies (loaded once per container lifecycle)
 whisper_model = None
 openai_client = None
@@ -41,9 +46,9 @@ def get_whisper_model():
     """Lazy-load Whisper model (expensive operation)."""
     global whisper_model
     if whisper_model is None:
-        logger.info(f"Loading Whisper model: {WHISPER_MODEL}")
+        logger.info(f"Loading Whisper model: {WHISPER_MODEL} on {DEVICE}")
         import whisper
-        whisper_model = whisper.load_model(WHISPER_MODEL, download_root='/tmp/whisper-models')
+        whisper_model = whisper.load_model(WHISPER_MODEL, device=DEVICE, download_root='/tmp/whisper-models')
         logger.info("Whisper model loaded")
     return whisper_model
 
@@ -69,7 +74,8 @@ def get_diarization_pipeline():
                 use_auth_token=HUGGINGFACE_TOKEN,
                 cache_dir='/tmp/pyannote-models'
             )
-            logger.info("Diarization pipeline loaded")
+            diarization_pipeline.to(torch.device(DEVICE))
+            logger.info(f"Diarization pipeline loaded on {DEVICE}")
         except Exception as e:
             logger.warning(f"Failed to load diarization pipeline: {e}")
             diarization_pipeline = False  # Mark as attempted
@@ -470,4 +476,3 @@ def handler(event, context):
         'statusCode': 200,
         'body': json.dumps({'message': 'Processing complete'})
     }
-
