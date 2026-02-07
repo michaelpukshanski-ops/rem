@@ -38,7 +38,14 @@ export function Header() {
               <Link href="/dashboard" className="text-gray-600 hover:text-gray-900 transition-colors">
                 Dashboard
               </Link>
-              <UserButton afterSignOutUrl="/" />
+              <UserButton
+                afterSignOutUrl="/"
+                appearance={{
+                  elements: {
+                    avatarBox: "w-10 h-10"
+                  }
+                }}
+              />
             </SignedIn>
           </div>
 
@@ -73,7 +80,14 @@ export function Header() {
                 <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
                   Dashboard
                 </Link>
-                <UserButton afterSignOutUrl="/" />
+                <UserButton
+                  afterSignOutUrl="/"
+                  appearance={{
+                    elements: {
+                      avatarBox: "w-10 h-10"
+                    }
+                  }}
+                />
               </SignedIn>
             </div>
           </div>
