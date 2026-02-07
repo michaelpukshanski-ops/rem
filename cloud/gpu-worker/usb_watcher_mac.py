@@ -164,7 +164,7 @@ def process_volume(volume_path: str, user_id: str, device_id: str):
             logger.error(f"Failed to queue transcription for {file_path.name}")
 
 
-def watch_for_usb(user_id: str, device_id: str, poll_interval: int = 5):
+def watch_for_usb(user_id: str, device_id: str, poll_interval: int = 5, process_existing: bool = True):
     """Watch for USB drive insertion and process files."""
     logger.info("Starting USB watcher for Mac")
     logger.info(f"User ID: {user_id}, Device ID: {device_id}")
@@ -172,6 +172,13 @@ def watch_for_usb(user_id: str, device_id: str, poll_interval: int = 5):
 
     known_volumes = set(get_mounted_volumes())
     logger.info(f"Currently mounted volumes: {len(known_volumes)}")
+
+    # Process already-mounted volumes on startup
+    if process_existing and known_volumes:
+        logger.info("Processing existing volumes...")
+        for volume in known_volumes:
+            logger.info(f"Checking existing volume: {volume}")
+            process_volume(volume, user_id, device_id)
 
     while True:
         try:
