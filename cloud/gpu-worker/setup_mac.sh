@@ -77,10 +77,11 @@ SQS_QUEUE_URL=
 # DynamoDB
 DYNAMODB_TABLE=
 
-# Whisper Configuration for Mac (Apple Silicon)
+# Whisper Configuration for Mac (Apple Silicon M4)
+# Use 'mps' for GPU acceleration via Metal Performance Shaders
 WHISPER_MODEL=base
-WHISPER_DEVICE=cpu
-WHISPER_COMPUTE_TYPE=int8
+WHISPER_DEVICE=mps
+WHISPER_COMPUTE_TYPE=float16
 
 # OpenAI API (for embeddings and summarization)
 OPENAI_API_KEY=
