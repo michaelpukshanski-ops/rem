@@ -117,7 +117,7 @@ def send_transcription_job(s3_key: str, user_id: str, device_id: str) -> bool:
 
         sqs_client.send_message(
             QueueUrl=SQS_QUEUE_URL,
-            MessageBody=str(message)
+            MessageBody=json.dumps(message)
         )
 
         logger.info("Transcription job queued")

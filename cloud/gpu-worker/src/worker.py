@@ -430,7 +430,11 @@ def update_dynamodb_record(
 def process_message(message: Dict[str, Any]) -> bool:
     """Process a single SQS message."""
     try:
-        body = json.loads(message['Body'])
+        # Debug: Log the raw message body
+        raw_body = message['Body']
+        logger.debug(f"Raw message body: {raw_body}")
+
+        body = json.loads(raw_body)
         receipt_handle = message['ReceiptHandle']
         
         recording_id = body['recordingId']
