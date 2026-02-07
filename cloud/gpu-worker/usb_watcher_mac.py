@@ -8,6 +8,7 @@ Designed for Mac Mini with Apple Silicon GPU acceleration.
 import os
 import sys
 import time
+import json
 import subprocess
 import logging
 from pathlib import Path
