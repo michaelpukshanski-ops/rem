@@ -6,21 +6,26 @@ set -e
 echo "🔍 Fetching AWS Configuration..."
 echo ""
 
-# Get AWS Account ID
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")
-
-if [ -z "$ACCOUNT_ID" ]; then
-    echo "❌ Failed to get AWS Account ID. Make sure you're logged in:"
-    echo "   aws sso login"
-    exit 1
-fi
-
-echo "✅ AWS Account ID: $ACCOUNT_ID"
-echo ""
-
 # Get region
 REGION=${AWS_REGION:-us-east-1}
 echo "📍 Region: $REGION"
+echo ""
+
+# Get AWS Account ID (try multiple methods)
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")
+
+if [ -z "$ACCOUNT_ID" ]; then
+    # Try getting from existing SQS queue if it exists
+    ACCOUNT_ID=$(aws sqs list-queues --region $REGION 2>/dev/null | grep -o '[0-9]\{12\}' | head -1 || echo "")
+fi
+
+if [ -z "$ACCOUNT_ID" ]; then
+    echo "⚠️  Could not auto-detect AWS Account ID"
+    echo "   Please enter your AWS Account ID (12 digits):"
+    read -r ACCOUNT_ID
+fi
+
+echo "✅ AWS Account ID: $ACCOUNT_ID"
 echo ""
 
 # Find SQS queue
