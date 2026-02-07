@@ -86,11 +86,14 @@ if missing_vars:
 # Initialize Whisper model
 logger.info(f"Loading Whisper model: {WHISPER_MODEL} on {WHISPER_DEVICE}")
 try:
+    # Use HF_HOME from env or default to user's home directory
+    cache_dir = os.getenv('HF_HOME') or os.path.expanduser('~/.cache/huggingface')
+
     whisper_model = WhisperModel(
         WHISPER_MODEL,
         device=WHISPER_DEVICE,
         compute_type=WHISPER_COMPUTE_TYPE,
-        download_root="/root/.cache/huggingface"
+        download_root=cache_dir
     )
     logger.info("Whisper model loaded successfully")
 except Exception as e:
