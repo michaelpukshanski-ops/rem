@@ -1,0 +1,19 @@
+# RAG System Dependencies for REM
+# Install with: pip install -r requirements-rag.txt
+
+# Vector Database
+chromadb>=0.4.22
+
+# Embeddings
+sentence-transformers>=2.3.1
+
+# Ollama Python Client
+ollama>=0.1.6
+
+# PyTorch for Apple Silicon (MPS support)
+# Install separately with: pip3 install torch torchvision torchaudio
+
+# Already in main requirements.txt:
+# boto3>=1.34.0
+# python-dotenv>=1.0.0
+

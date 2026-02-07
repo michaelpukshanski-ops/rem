@@ -333,14 +333,14 @@ def upload_transcript_to_s3(transcript_data: Dict[str, Any], s3_key: str) -> boo
     """Upload transcript JSON to S3."""
     try:
         logger.info(f"Uploading transcript to s3://{TRANSCRIPTS_BUCKET}/{s3_key}")
-        
+
         s3_client.put_object(
             Bucket=TRANSCRIPTS_BUCKET,
             Key=s3_key,
             Body=json.dumps(transcript_data, indent=2),
             ContentType='application/json'
         )
-        
+
         # Also upload plain text version
         txt_key = s3_key.replace('.json', '.txt')
         s3_client.put_object(
@@ -349,11 +349,53 @@ def upload_transcript_to_s3(transcript_data: Dict[str, Any], s3_key: str) -> boo
             Body=transcript_data['fullText'],
             ContentType='text/plain'
         )
-        
+
         logger.info("Transcript uploaded successfully")
         return True
     except ClientError as e:
         logger.error(f"Failed to upload transcript: {e}")
+        return False
+
+
+def auto_index_transcript(transcript_data: Dict[str, Any]) -> bool:
+    """
+    Automatically index a new transcript in the local RAG system.
+    This runs asynchronously and won't block the main worker.
+    """
+    try:
+        # Only index if RAG system is available
+        from indexer import TranscriptIndexer
+        from rag_config import RAG_CONFIG
+        import tempfile
+
+        logger.info("Auto-indexing transcript for RAG system...")
+
+        # Save transcript to temporary file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(transcript_data, f, indent=2)
+            temp_path = Path(f.name)
+
+        try:
+            # Initialize indexer and index the transcript
+            indexer = TranscriptIndexer()
+            chunks_added, chunks_skipped = indexer.index_transcript(temp_path)
+
+            if chunks_added > 0:
+                logger.info(f"✅ Auto-indexed transcript: {chunks_added} chunk(s) added to RAG system")
+                return True
+            else:
+                logger.debug(f"Transcript already indexed or no chunks created")
+                return False
+        finally:
+            # Clean up temp file
+            temp_path.unlink(missing_ok=True)
+
+    except ImportError:
+        logger.debug("RAG system not available (indexer not installed)")
+        return False
+    except Exception as e:
+        logger.warning(f"Failed to auto-index transcript: {e}")
+        # Don't fail the main transcription job if indexing fails
         return False
 
 
@@ -543,6 +585,9 @@ def process_message(message: Dict[str, Any]) -> bool:
             # Upload transcript
             if not upload_transcript_to_s3(transcript_data, transcript_s3_key):
                 return False
+
+            # Auto-index transcript for RAG system (non-blocking)
+            auto_index_transcript(transcript_data)
 
             # Update DynamoDB
             if not update_dynamodb_record(
