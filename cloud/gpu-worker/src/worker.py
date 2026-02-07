@@ -25,8 +25,10 @@ from openai import OpenAI
 
 from speaker_service import identify_speakers_in_recording
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from parent directory
+# This ensures .env is found whether running from src/ or gpu-worker/
+env_path = Path(__file__).parent.parent / '.env'
+load_dotenv(dotenv_path=env_path)
 
 # Configure logging
 logging.basicConfig(
