@@ -1,7 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { Calendar, Settings, Mic, HelpCircle, Users } from 'lucide-react';
+import { Calendar, Settings, Mic, HelpCircle, Users, HardDrive } from 'lucide-react';
 import { MemoryChat } from '@/components/MemoryChat';
 
 export default async function DashboardPage() {
@@ -46,6 +46,13 @@ export default async function DashboardPage() {
                     icon={<Users className="w-5 h-5" />}
                     title="Speakers"
                     description="Manage voice profiles"
+                  />
+                </Link>
+                <Link href="/dashboard/archive">
+                  <QuickAction
+                    icon={<HardDrive className="w-5 h-5" />}
+                    title="Recording Archive"
+                    description="Ask questions about recordings"
                   />
                 </Link>
                 <QuickAction
